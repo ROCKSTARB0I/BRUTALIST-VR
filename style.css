@@ -28,3 +28,5 @@ select { font-family: inherit; font-size: 13px; padding: 3px 6px; border: 2px so
 #banner b { display: block; font-family: 'Bangers', sans-serif; font-size: clamp(40px, 9vw, 84px); letter-spacing: 3px; color: #1b1b1b; text-shadow: 4px 4px 0 #8c0606; }
 #banner span { font-size: 15px; letter-spacing: 2px; text-transform: uppercase; }
 #flash { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(150,0,0,0.75)); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+
+#hint { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); font-weight: 700; font-size: 14px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 6px rgba(0,0,0,0.8); pointer-events: none; }

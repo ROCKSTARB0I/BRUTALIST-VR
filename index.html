@@ -7,8 +7,8 @@
 <meta name="description" content="A physics stickman gore sandbox for Meta Quest. Swing with weight, cut anything, paint the walls.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1">
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Black+Ops+One&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <canvas id="view" tabindex="0"></canvas>
@@ -21,8 +21,8 @@
       <button id="btnDesk">Play on desktop</button>
     </div>
     <div class="opts">
-      <label>Mode <select id="selMode"><option value="waves">Waves</option><option value="infected">Infected</option><option value="sandbox">Sandbox</option></select></label>
-      <label>Map <select id="selMap"><option value="alley">Back Alley</option><option value="roofs">Rooftops</option><option value="yard">Dust Yard</option><option value="block">The Block</option></select></label>
+      <label>Mode <select id="selMode"><option value="career">Career</option><option value="waves">Waves</option><option value="infected">Infected</option><option value="sandbox">Sandbox</option></select></label>
+      <label>Map <select id="selMap"><option value="alley">Back Alley</option><option value="roofs">Rooftops</option><option value="downtown">Downtown</option><option value="pit">Sandpit</option><option value="tenement">Tenement</option><option value="droptest">Drop Test</option><option value="depot">Depot</option><option value="metro">Metro</option><option value="chapel">Chapel</option><option value="yard">Dust Yard</option><option value="block">The Block</option></select></label>
       <label>Blood <select id="selBlood"><option value="red">Red</option><option value="neon">Neon pink</option><option value="toxic">Toxic green</option><option value="ink">Ink</option></select></label>
       <label>Sandbox enemies <input id="rngCount" type="range" min="1" max="12" step="1"><b id="rngCountOut"></b></label>
       <label>Hand angle (VR) <input id="rngPitch" type="range" min="-45" max="45" step="1"><b id="rngPitchOut"></b>&deg;</label>
@@ -30,14 +30,15 @@
     </div>
     <div class="help">
       <div><b>Quest</b> grip = grab weapon / body &middot; trigger = fire &middot; B/Y = reload &middot; left stick move &middot; right stick snap turn &middot; A jump &middot; hold A + trigger = kick &middot; swing your head into them = headbutt</div>
-      <div><b>Desktop</b> WASD move &middot; mouse look &middot; click swing (flick the mouse to pick the swing) &middot; E pick up / grab &middot; Q throw &middot; F kick &middot; G headbutt &middot; R reload &middot; 1-5 weapons (sandbox) &middot; Esc menu</div>
+      <div><b>Desktop</b> WASD move &middot; mouse look &middot; click swing (flick the mouse to pick the swing) &middot; E pick up / grab / buy &middot; Q throw &middot; F kick &middot; G headbutt &middot; R reload &middot; 1-4 holsters &middot; Esc menu</div>
     </div>
   </div>
 </div>
 <div id="hud" hidden><div class="hp"><i id="hpbar"></i></div><div id="l1"></div><div id="l2"></div></div>
 <div id="cross" hidden></div>
+<div id="hint"></div>
 <div id="banner"></div>
 <div id="flash"></div>
-<script type="module" src="src/main.js?v=1"></script>
+<script type="module" src="src/main.js?v=3"></script>
 </body>
 </html>
