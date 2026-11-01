@@ -1,8 +1,8 @@
 // Stickmen: 17 particles, capsule bones between them, hidden struts that hold the torso together.
 // Alive = particles are pulled toward an animated pose (muscles). Dead = pure ragdoll.
 // Any bone can be cut anywhere along its length; the struts that cross the cut plane snap with it.
-import * as THREE from '../vendor/three.module.js?v=1';
-import { Particle, DT } from './phys.js?v=1';
+import * as THREE from '../vendor/three.module.js?v=3';
+import { Particle, DT } from './phys.js?v=3';
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
 
@@ -425,6 +425,10 @@ export class Body {
         }
         break;
       }
+      case 'idle':                                  // shopkeepers: stand, breathe, watch you
+        turn(1.2);
+        this.moveAmt *= 0.9;
+        break;
       case 'down':
         K = 0;
         this.downT -= dt;

@@ -1,8 +1,8 @@
 // Contacts between weapons / fists / feet and stickman bones, and hitscan bullets.
 // Sharp edges cut when the edge moves fast enough across the bone (or keeps sawing); everything else is blunt.
-import * as THREE from '../vendor/three.module.js?v=1';
-import { DT, segSeg, rayCapsule } from './phys.js?v=1';
-import { J, ZONE } from './body.js?v=1';
+import * as THREE from '../vendor/three.module.js?v=3';
+import { DT, segSeg, rayCapsule } from './phys.js?v=3';
+import { J, ZONE } from './body.js?v=3';
 const V3 = THREE.Vector3;
 const res = { s: 0, t: 0, d2: 0, c1: new V3(), c2: new V3() };
 const _vw = new V3(), _vb = new V3(), _vr = new V3(), _n = new V3(), _e = new V3(), _ax = new V3(), _t = new V3(), _u = new V3();
@@ -91,10 +91,21 @@ function strike(g, src, bone, t, n, vrel, pen) {
     }
     _e.fromArray(sh.edge).applyQuaternion(w.quat);
     let es = vrel.dot(_e); if (sh.double) es = Math.abs(es);
+    if (sh.saw) {
+      // the chain does the cutting: any contact while running chews in, faster with pressure
+      if (!w.running) es = Math.min(es, 0.5);
+      else {
+        es = Math.max(es, 0) + 1.2;
+        bone.saw += DT * (0.5 + w.rev * 0.8);
+        w.load = 1;
+        if (Math.random() < 0.5) g.gore.emit(pt, _vw.copy(vrel).normalize().multiplyScalar(-2).add(_t.set(0, 1.5, 0)), 2, 1.4);
+        if (Math.random() < 0.05) bone.paint(pt, bone.r * 2, 0.8);
+      }
+    }
     if (es > 0.9) {
       const thr = 2.0 * (bone.r / 0.05) / sh.sharp / Math.sqrt(src.mass / 2) * g.cutScale;
       bone.saw += es * DT * sh.sharp;                       // follow-through saws
-      if (es > thr || bone.saw > bone.r * 3.5) {
+      if ((!sh.saw && es > thr) || bone.saw > (sh.saw ? 0.12 + bone.r * 4 : bone.r * 3.5)) {
         const pn = new V3().crossVectors(src.axis, vrel).normalize();
         const bax = _t.subVectors(bone.b.p, bone.a.p).normalize();
         bone.saw = 0;
@@ -114,8 +125,9 @@ function strike(g, src, bone, t, n, vrel, pen) {
           return 'cut';
         }
       }
-      if (es > 1.6) gash(g, body, bone, pt, vrel, es * 0.5);
-      bone.cool = g.time + 0.08;
+      if (es > 1.6 && !sh.saw) gash(g, body, bone, pt, vrel, es * 0.5);
+      if (sh.saw && Math.random() < 0.08) { g.sfx.play('slice', pt, 0.5, 0.8); body.hurt(4, 0.3); }
+      if (!sh.saw) bone.cool = g.time + 0.08;
       separate(bone, n, pen * 0.25, t);
       return 'hit';
     }
@@ -133,6 +145,7 @@ function strike(g, src, bone, t, n, vrel, pen) {
   if (src.w && src.w.lp) for (const p of src.w.lp) p.addVel(n, -vn * 0.4);
   bone.cool = g.time + 0.1;
   if (E < 2) return 'tap';
+  if (src.w && src.w.def.homerun && E > 3) { g.homerun(body, n, pt); return 'homerun'; }
   const dmg = E * (ZONE[bone.kind] || 1) * 0.9 * (src.st ? src.st.dmgMul || 1 : 1);
   const isHead = bone.kind === 'head' && bone.b === body.P[J.CROWN];
   g.sfx.play(src.st && src.st.kind === 'fist' && E < 25 ? 'punch' : 'blunt', pt, Math.min(1.2, 0.3 + E / 30), isHead ? 0.9 : 1);
@@ -225,6 +238,13 @@ export function shoot(g, origin, dir, gun) {
       const vest = bone.kind === 'torso' && body.armor.vest && gun.dmg < 2;
       body.hurt((bone.kind === 'torso' ? (vest ? 10 : 34) : 18) * gun.dmg, 0.45);
       g.onHit(body, 'shot');
+    }
+    if (gun.nail && !h.nailed) {
+      const back = g.phys.ray(X, dir, 1.4, true);
+      const p = tt < 0.5 ? bone.a : bone.b;
+      if (back) { const at = X.clone().addScaledVector(dir, back.t); p.pin = at.clone(); g.nailMark(at, dir, p); }
+      else g.nailMark(X, dir, null, bone);
+      power = 0;
     }
     if (power <= 0) { endT = h.t1; break; }
   }

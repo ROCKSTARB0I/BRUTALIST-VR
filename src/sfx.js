@@ -162,6 +162,10 @@ const DEFS = {
     noiseBurst(o, 0.02, 1.2, 0.18, 'lp', 500);
     return norm(drive(o, 1.6), 0.8);
   },
+  // pneumatic nail gun: sharp air crack + a dull drive thump
+  nail: () => { const o = arr(0.25); noiseBurst(o, 0, 0.02, 1, 'hp', 1800); tone(o, 0.004, 0.08, 0.8, 140, 80, 5); noiseBurst(o, 0.01, 0.18, 0.35, 'bp', u => 2400 - 1600 * u, 1.2); return norm(drive(o, 1.6), 0.8); },
+  pullcord: () => { const o = arr(0.6); noiseBurst(o, 0, 0.35, 0.6, 'bp', u => 600 + 1800 * u, 2, 'bell'); clicks(o, 0.32, 0.25, 8, 0.6, 900, 4); tone(o, 0.35, 0.25, 0.5, 40, 55, 3, 'saw'); return norm(o, 0.7); },
+  spinup: () => { const o = arr(0.7); const bq = new BQ('bp', 300, 3); let ph = 0; for (let i = 0; i < o.length; i++) { const u = i / o.length, f = 30 + 220 * u; ph += f / SR; o[i] = bq.p(((ph % 1) * 2 - 1) + nz() * 0.3) * Math.min(1, u * 4); bq.set(300 + 1500 * u, 3); } return norm(o, 0.6); },
   groan: (v) => {
     const o = arr(1.3), f0 = 82 + v * 8, bands = [new BQ('bp', 420, 6), new BQ('bp', 900, 7), new BQ('bp', 2300, 9)], g = [1, 0.6, 0.25];
     let ph = 0;
@@ -174,6 +178,39 @@ const DEFS = {
     return norm(o, 0.5);
   },
 };
+
+// a live engine voice (chainsaw / minigun motor): two-stroke saw buzz + grit, pitch and load set every frame
+export class Motor {
+  constructor(sfx, kind) {
+    const c = sfx.ctx; this.c = c; this.kind = kind;
+    this.osc = c.createOscillator(); this.osc.type = 'sawtooth';
+    this.osc2 = c.createOscillator(); this.osc2.type = 'square';
+    const len = c.sampleRate, nb = c.createBuffer(1, len, c.sampleRate), d = nb.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = c.createBufferSource(); this.noise.buffer = nb; this.noise.loop = true;
+    this.nf = c.createBiquadFilter(); this.nf.type = 'bandpass'; this.nf.frequency.value = 1800; this.nf.Q.value = 0.8;
+    this.lp = c.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 1200; this.lp.Q.value = 2;
+    this.g = c.createGain(); this.g.gain.value = 0;
+    this.ng = c.createGain(); this.ng.gain.value = 0;
+    this.og2 = c.createGain(); this.og2.gain.value = 0.35;
+    this.pan = c.createPanner(); this.pan.panningModel = 'equalpower'; this.pan.refDistance = 1.2;
+    this.osc.connect(this.lp); this.osc2.connect(this.og2); this.og2.connect(this.lp);
+    this.noise.connect(this.nf); this.nf.connect(this.ng); this.ng.connect(this.pan);
+    this.lp.connect(this.g); this.g.connect(this.pan); this.pan.connect(sfx.master);
+    this.osc.start(); this.osc2.start(); this.noise.start();
+  }
+  set(on, rev, load, pos) {
+    const t = this.c.currentTime, k = this.kind === 'saw';
+    const f = k ? (on ? 38 + rev * 85 - load * 18 : 0) : 40 + rev * 260;
+    this.osc.frequency.setTargetAtTime(Math.max(20, f), t, 0.05);
+    this.osc2.frequency.setTargetAtTime(Math.max(20, f * 0.5), t, 0.05);
+    this.lp.frequency.setTargetAtTime(k ? 700 + rev * 2200 : 500 + rev * 3000, t, 0.05);
+    this.g.gain.setTargetAtTime(on ? (k ? 0.28 + rev * 0.25 : rev * 0.3) : 0, t, 0.06);
+    this.ng.gain.setTargetAtTime(on ? (k ? 0.06 + load * 0.5 : rev * 0.05) : 0, t, 0.05);
+    if (pos) { this.pan.positionX.value = pos.x; this.pan.positionY.value = pos.y; this.pan.positionZ.value = pos.z; }
+  }
+  stop() { try { this.osc.stop(); this.osc2.stop(); this.noise.stop(); this.pan.disconnect(); } catch (e) {} }
+}
 
 export class Sfx {
   constructor() { this.ctx = null; this.bank = {}; this.live = 0; this.muted = /[?&]mute/.test(location.search); }

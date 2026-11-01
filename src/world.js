@@ -1,5 +1,5 @@
 // Levels are boxes (physics) dressed with procedural canvas textures (concrete, brick, sand) that blood paints into.
-import * as THREE from '../vendor/three.module.js?v=1';
+import * as THREE from '../vendor/three.module.js?v=3';
 const V3 = THREE.Vector3;
 
 // ---------- procedural surface bases (drawn into the same canvases blood paints on) ----------
@@ -82,6 +82,58 @@ const asphalt = (ctx, W, H) => {
 };
 const metal = (c) => (ctx, W, H) => { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); grime(ctx, W, H, 0.6); ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, W - 2, H - 2); };
 
+
+const subway = (ctx, W, H, box, fi, dims) => {
+  ctx.fillStyle = '#9aa0a6'; ctx.fillRect(0, 0, W, H);
+  const px = W / dims[0], py = H / dims[1], tw = 0.15 * px, th = 0.075 * py;
+  for (let r = 0; r * th < H + th; r++) for (let x = -tw; x < W + tw; x += tw) {
+    const k = 0.95 + Math.random() * 0.06; ctx.fillStyle = `rgb(${232 * k | 0},${234 * k | 0},${228 * k | 0})`;
+    ctx.fillRect(x + (r % 2) * tw / 2 + 1, H - (r + 1) * th + 1, tw - 2, th - 2);
+  }
+  if (fi !== 2 && fi !== 3) { ctx.fillStyle = '#2f6f5a'; ctx.fillRect(0, H - 1.3 * py, W, 0.12 * py); }
+  grime(ctx, W, H, 0.7);
+};
+const planks = (base, dark) => (ctx, W, H, box, fi, dims) => {
+  ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
+  const along = dims[0] >= dims[1], n = Math.max(2, Math.round((along ? dims[1] : dims[0]) / 0.14));
+  ctx.strokeStyle = dark; ctx.lineWidth = 2;
+  for (let i = 1; i < n; i++) { ctx.beginPath(); if (along) { ctx.moveTo(0, i * H / n); ctx.lineTo(W, i * H / n); } else { ctx.moveTo(i * W / n, 0); ctx.lineTo(i * W / n, H); } ctx.stroke(); }
+  for (let i = 0; i < W * H / 3000; i++) { ctx.fillStyle = 'rgba(60,30,10,0.12)'; ctx.fillRect(Math.random() * W, Math.random() * H, 3, 1); }
+  grime(ctx, W, H, 0.5);
+};
+const stone = (base) => (ctx, W, H, box, fi, dims) => {
+  ctx.fillStyle = '#6a645c'; ctx.fillRect(0, 0, W, H);
+  const px = W / dims[0], py = H / dims[1], bw = 0.55 * px, bh = 0.3 * py, c = new THREE.Color(base);
+  for (let r = 0; r * bh < H + bh; r++) for (let x = -bw; x < W + bw; x += bw) {
+    const k = 0.85 + Math.random() * 0.25; ctx.fillStyle = `rgb(${c.r * 255 * k | 0},${c.g * 255 * k | 0},${c.b * 255 * k | 0})`;
+    ctx.fillRect(x + (r % 2) * bw / 2 + 2, H - (r + 1) * bh + 2, bw - 4, bh - 4);
+  }
+  grime(ctx, W, H, 1);
+};
+const road = (ctx, W, H, box, fi, dims) => {
+  asphalt(ctx, W, H);
+  const px = W / dims[0], py = H / dims[1];
+  ctx.fillStyle = 'rgba(245,245,240,0.85)';
+  // dashed centre lines along both axes through the middle of the slab
+  for (let x = 0; x < dims[0]; x += 3) ctx.fillRect(x * px, H / 2 - 0.06 * py, 1.5 * px, 0.12 * py);
+  for (let y = 0; y < dims[1]; y += 3) ctx.fillRect(W / 2 - 0.06 * px, y * py, 0.12 * px, 1.5 * py);
+};
+const lab = (ctx, W, H, box, fi, dims) => {
+  ctx.fillStyle = '#e4e6e8'; ctx.fillRect(0, 0, W, H);
+  const px = W / dims[0], py = H / dims[1];
+  ctx.strokeStyle = 'rgba(40,60,80,0.18)'; ctx.lineWidth = 2;
+  for (let x = 0; x <= dims[0]; x += 1) { ctx.beginPath(); ctx.moveTo(x * px, 0); ctx.lineTo(x * px, H); ctx.stroke(); }
+  for (let y = 0; y <= dims[1]; y += 1) { ctx.beginPath(); ctx.moveTo(0, y * py); ctx.lineTo(W, y * py); ctx.stroke(); }
+  if (fi !== 2 && fi !== 3) { ctx.fillStyle = '#e8b21c'; for (let x = 0; x < dims[0]; x += 0.5) { ctx.save(); ctx.translate(x * px, H - 0.2 * py); ctx.rotate(-0.6); ctx.fillRect(0, 0, 0.18 * px, 0.4 * py); ctx.restore(); } ctx.fillStyle = '#1b1b1b'; ctx.fillRect(0, H - 0.08 * py, W, 0.08 * py); }
+  grime(ctx, W, H, 0.4);
+};
+const floorLines = (ctx, W, H, box, fi, dims) => {
+  concrete('#9a9a96', 9)(ctx, W, H, box, fi, dims);
+  const px = W / dims[0], py = H / dims[1];
+  ctx.fillStyle = '#e2b51e';
+  for (const x of [5, 11, 17, 23]) if (x < dims[0]) ctx.fillRect(x * px, 0, 0.12 * px, H);
+};
+
 export class World {
   constructor(game) {
     this.g = game; this.group = new THREE.Group(); game.scene.add(this.group);
@@ -92,7 +144,7 @@ export class World {
     const b = { min, max, color: o.color || '#a39b90', glass: !!o.glass, paintBase: o.base, noPaint: !!o.glass, noFloor: !!o.noFloor };
     if (!o.hidden) {
       const geo = new THREE.BoxGeometry(max.x - min.x, max.y - min.y, max.z - min.z);
-      const m = b.glass ? new THREE.MeshLambertMaterial({ color: 0xbfe3ee, transparent: true, opacity: 0.25, depthWrite: false })
+      const m = b.glass ? new THREE.MeshLambertMaterial({ color: o.glassColor || 0xbfe3ee, transparent: true, opacity: o.glassColor ? 0.6 : 0.25, depthWrite: false, emissive: o.glassColor || 0x000000, emissiveIntensity: o.glassColor ? 0.35 : 0 })
         : new THREE.MeshLambertMaterial({ color: b.color });
       b.mesh = new THREE.Mesh(geo, [m, m, m, m, m, m]);
       b.mesh.position.addVectors(min, max).multiplyScalar(0.5);
@@ -181,7 +233,249 @@ export class World {
   }
 }
 
+export function registerMap(name, fn) { MAPS[name] = fn; }
 const MAPS = {
+  // Sandpit: a small open-air arena, low walls, four gates, bleachers around it
+  pit(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#8fc0f0'); g.scene.fog = new THREE.Fog('#b4d4f2', 30, 100);
+    const sunDir = new V3(0.5, 0.8, 0.2); w.sky('#3b7bd4', '#86b8ee', '#dceaf6', sunDir, '#fff6dc');
+    w.lights('#dbe9ff', '#8a8578', 2.0, '#fff4e0', 2.4, sunDir.clone().multiplyScalar(40)); w.scenery();
+    const S = 7, H = 2.2, T = 0.35, CON = concrete('#b8b0a2', 0.6);
+    w.box(-30, -1, -30, 30, 0, 30, { base: asphalt });
+    w.box(-S, 0, -S, S, 0.03, S, { base: sand });
+    for (const sg of [-1, 1]) {
+      w.box(-S - T, 0, sg * S, -1, H, sg * (S + T), { base: CON }); w.box(1, 0, sg * S, S + T, H, sg * (S + T), { base: CON });
+      w.box(sg * S, 0, -S, sg * (S + T), H, -1, { base: CON }); w.box(sg * S, 0, 1, sg * (S + T), H, S, { base: CON });
+      for (let i = 0; i < 4; i++) {                 // bleachers stepping up behind the walls
+        const d = S + T + 0.6 + i * 0.7, h = H * 0.5 + i * 0.5;
+        w.box(-S - 2, 0, sg * d, -1.5, h, sg * (d + 0.7), { base: concrete('#9a958c', 0.5) }); w.box(1.5, 0, sg * d, S + 2, h, sg * (d + 0.7), { base: concrete('#9a958c', 0.5) });
+      }
+    }
+    w.box(-2.5, 0, -2.5, -1.5, 1.0, -1.5, { base: concrete('#8a6c44', 0.3) });
+    w.box(1.6, 0, 1.2, 2.8, 1.2, 2.4, { base: concrete('#8a6c44', 0.3) });
+    w.box(-0.25, 0, 3.2, 0.25, 2.6, 3.7, { base: CON });
+    w.spawns.push(new V3(0, 0, -S - 3), new V3(0, 0, S + 3), new V3(-S - 3, 0, 0), new V3(S + 3, 0, 0));
+    w.start = { x: 3.5, z: -4.5, yaw: Math.PI };
+    w.wallSpot = { x: 3.5, y: 0, z: -S + 0.05, yaw: 0 };
+  },
+
+  // Tenement: a three-storey apartment block with a stairwell, rooms, and windows to throw people through
+  tenement(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#8fc0f0'); g.scene.fog = new THREE.Fog('#a9cdf0', 30, 90);
+    const sunDir = new V3(-0.4, 0.8, 0.45); w.sky('#3d7fd6', '#7fb4ec', '#d6e8f6', sunDir, '#fff6dc');
+    w.lights('#e6efff', '#8a8578', 2.1, '#fff4e0', 2.0, sunDir.clone().multiplyScalar(40)); w.scenery();
+    const X0 = -8, X1 = 8, Z0 = -5, Z1 = 5, FH = 3.2, T = 0.2;
+    const OUT = facade('#b9765a', '#91574a'), IN = concrete('#d8d2c4', 9), FLOOR = planks('#9a6a3e', 'rgba(50,25,10,0.35)');
+    w.box(-30, -1, -30, 30, 0, 30, { base: asphalt });
+    for (let f = 0; f < 3; f++) {
+      const y = f * FH;
+      // long walls with three windows each side (glass you can throw people through)
+      for (const z of [Z0, Z1]) {
+        const zz0 = z < 0 ? z : z - T, zz1 = z < 0 ? z + T : z;
+        let x = X0;
+        for (const wx of [-6, -2, 2]) {
+          w.box(x, y, zz0, wx - 0.6, y + FH, zz1, { base: OUT });
+          w.box(wx - 0.6, y, zz0, wx + 0.6, y + 1.0, zz1, { base: OUT });
+          w.box(wx - 0.6, y + 1.0, (zz0 + zz1) / 2 - 0.03, wx + 0.6, y + 2.3, (zz0 + zz1) / 2 + 0.03, { glass: true });
+          w.box(wx - 0.6, y + 2.3, zz0, wx + 0.6, y + FH, zz1, { base: OUT });
+          x = wx + 0.6;
+        }
+        w.box(x, y, zz0, X1, y + FH, zz1, { base: OUT });
+      }
+      w.box(X0, y, Z0, X0 + T, y + FH, Z1, { base: OUT }); w.box(X1 - T, y, Z0, X1, y + FH, Z1, { base: OUT });
+      // room dividers with doorways
+      for (const dx of [-3, 2]) { w.box(dx - 0.1, y, Z0, dx + 0.1, y + FH, -0.6, { base: IN }); w.box(dx - 0.1, y, 0.6, dx + 0.1, y + FH, Z1, { base: IN }); w.box(dx - 0.1, y + 2.2, -0.6, dx + 0.1, y + FH, 0.6, { base: IN }); }
+      // a bed / table per room for cover
+      w.box(-7.6, y, 2.2, -5.6, y + 0.5, 4.6, { base: concrete('#6d7f98', 0.25) });
+      w.box(-1, y, -4.4, 0.6, y + 0.75, -3.4, { base: planks('#7a4a28', 'rgba(40,20,5,0.4)') });
+    }
+    // floors with stairwell holes, then the roof
+    w.box(X0, -0.05, Z0, X1, 0.02, Z1, { base: FLOOR });
+    const slab = (y, hx0, hx1) => { w.box(X0, y - 0.2, Z0, hx0, y, Z1, { base: FLOOR }); w.box(hx0, y - 0.2, -1.4, hx1, y, Z1, { base: FLOOR }); w.box(hx1, y - 0.2, Z0, X1, y, Z1, { base: FLOOR }); };
+    slab(FH, 6.0, 7.8); slab(FH * 2, 5.0, 5.9);
+    w.box(X0, FH * 3 - 0.2, Z0, X1, FH * 3, Z1, { base: concrete('#9a958c', 9) });
+    // stairs: flight A ground -> 1st along +z, flight B 1st -> 2nd back along -z
+    for (let i = 0; i < 16; i++) w.box(6.0, 0, -4.8 + i * 0.21, 7.8, (i + 1) * 0.2, -4.8 + (i + 1) * 0.21, { base: IN });
+    for (let i = 0; i < 16; i++) w.box(5.0, FH, -1.4 - (i + 1) * 0.21, 5.9, FH + (i + 1) * 0.2, -1.4 - i * 0.21, { base: IN });
+    // front door gap: knock out a piece of the ground floor end wall
+    w.spawns.push(new V3(-6, 0, 0), new V3(-6, FH, 0), new V3(-6, FH * 2, 0), new V3(0, FH, 3), new V3(0, FH * 2, -3));
+    w.start = { x: 4.5, z: 0, yaw: Math.PI / 2 };
+    w.wallSpot = { x: 7.75, y: 0, z: 3.0, yaw: -Math.PI / 2 };
+    w.floors = true;
+  },
+
+  // Drop Test: a bright testing ground of platforms over pits, no roof
+  droptest(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#bcd7ee'); g.scene.fog = new THREE.Fog('#cfe2f2', 35, 110);
+    const sunDir = new V3(0.3, 0.9, 0.3); w.sky('#5a92da', '#a8cbee', '#eef4fa', sunDir, '#ffffff');
+    w.lights('#ffffff', '#9a9a9a', 2.3, '#ffffff', 1.8, sunDir.clone().multiplyScalar(40)); w.scenery({ r: 90, base: -8 });
+    // the pit floor far below, then the test deck with holes
+    w.box(-20, -9, -20, 20, -8, 20, { base: lab });
+    const deck = (x0, z0, x1, z1, y) => w.box(x0, y - 0.4, z0, x1, y, z1, { base: lab });
+    deck(-12, -12, 12, -4, 0); deck(-12, 4, 12, 12, 0); deck(-12, -4, -4, 4, 0); deck(4, -4, 12, 4, 0);        // hole in the middle (8 x 8)
+    deck(-2, -2, 2, 2, 0);                                                                                       // a pillar island
+    w.box(-2, -8, -2, 2, -0.4, 2, { base: lab });
+    w.box(-0.5, -0.4, -4, 0.5, 0, -2, { base: lab }); w.box(-0.5, -0.4, 2, 0.5, 0, 4, { base: lab });          // narrow bridges to the island
+    // stepped towers
+    for (const [x, z, h] of [[-9, -9, 2], [9, 9, 4], [-9, 9, 3]]) {
+      w.box(x - 1.5, 0, z - 1.5, x + 1.5, h, z + 1.5, { base: lab });
+      for (let i = 0; i < h / 0.4; i++) w.box(x + 1.5, 0, z - 0.6, x + 1.5 + 0.4 * (h / 0.4 - i), (i + 1) * 0.4, z + 0.6, { base: lab });
+    }
+    w.box(6, 0, -10, 10, 1.0, -9.6, { base: lab }); w.box(-10, 0, 6, -9.6, 1.0, 10, { base: lab });
+    w.spawns.push(new V3(-10, 0, -6), new V3(10, 0, -6), new V3(0, 0, 10), new V3(-10, 0, 0));
+    w.start = { x: 6, z: 7, yaw: Math.PI };
+    w.wallSpot = { x: 6, y: 0, z: 11.9, yaw: Math.PI };
+    w.fallY = -6;
+  },
+
+  // Depot: a warehouse of pallet racking, crates, a loading dock and an office up top
+  depot(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#2a2f38'); g.scene.fog = new THREE.Fog('#2a2f38', 18, 45);
+    w.sky('#1f242c', '#2a2f38', '#363c46', new V3(0, 1, 0), '#000000');
+    w.lights('#e8eef8', '#4a4640', 1.6, '#fff2dc', 1.4, new V3(8, 20, 6));
+    const X = 15, Z = 10, H = 7, T = 0.3, WALL = metal('#8e959c'), RACK = metal('#d0591e'), SHELF = metal('#7d8288'), CRATE = planks('#a87a44', 'rgba(60,30,10,0.4)');
+    w.box(-X - 1, -0.5, -Z - 1, X + 1, 0, Z + 1, { base: floorLines });
+    w.box(-X - T, H, -Z - T, X + T, H + 0.3, Z + T, { base: metal('#5a6068') });
+    w.box(-X - T, 0, -Z - T, X + T, H, -Z, { base: WALL }); w.box(-X - T, 0, -Z, -X, H, Z, { base: WALL }); w.box(X, 0, -Z, X + T, H, Z, { base: WALL });
+    // front wall with two roller doors open
+    w.box(-X - T, 0, Z, -8, H, Z + T, { base: WALL }); w.box(-4, 0, Z, 4, H, Z + T, { base: WALL }); w.box(8, 0, Z, X + T, H, Z + T, { base: WALL });
+    w.box(-8, 4, Z, -4, H, Z + T, { base: WALL }); w.box(4, 4, Z, 8, H, Z + T, { base: WALL });
+    // pallet racking rows: orange uprights, grey shelves, crates on them
+    for (const z of [-6, -1.5]) for (const x0 of [-12, -2.5]) {
+      for (let i = 0; i <= 3; i++) w.box(x0 + i * 2.4 - 0.06, 0, z - 0.6, x0 + i * 2.4 + 0.06, 4.6, z - 0.48, { base: RACK }), w.box(x0 + i * 2.4 - 0.06, 0, z + 0.48, x0 + i * 2.4 + 0.06, 4.6, z + 0.6, { base: RACK });
+      for (const y of [1.4, 2.9, 4.4]) w.box(x0, y - 0.08, z - 0.6, x0 + 7.2, y, z + 0.6, { base: SHELF });
+      for (let i = 0; i < 3; i++) { w.box(x0 + 0.3 + i * 2.4, 1.4, z - 0.45, x0 + 1.5 + i * 2.4, 2.3, z + 0.45, { base: CRATE }); w.box(x0 + 0.5 + i * 2.4, 2.9, z - 0.4, x0 + 1.9 + i * 2.4, 3.6, z + 0.4, { base: CRATE }); }
+    }
+    // loose crates and pallets on the floor
+    for (const [x, z, h] of [[-6, 4, 0.9], [-5, 5.2, 1.8], [2, 5, 0.9], [9, 2, 1.2], [10.5, 2.4, 0.9]]) w.box(x - 0.55, 0, z - 0.55, x + 0.55, h, z + 0.55, { base: CRATE });
+    // loading dock + office on a mezzanine with stairs and glass
+    w.box(9, 0, -Z, X, 1.2, -3, { base: concrete('#8a8a86', 0.6) });
+    w.box(9, 3.6, -Z, X, 3.8, -5, { base: metal('#6c7278') });
+    w.box(9, 3.8, -5.1, X, 4.8, -5, { glass: true }); w.box(9, 3.8, -Z, 9.1, 4.8, -5, { glass: true });
+    w.box(9, 4.8, -Z, X, 5.0, -5, { base: metal('#6c7278') });
+    for (let i = 0; i < 6; i++) w.box(8.2 - (i + 1) * 0.4, 1.2, -4.2, 8.2 - i * 0.4 + 0.8, 1.2 + (i + 1) * 0.4, -3.2, { base: SHELF });
+    w.box(7.0, 0, -4.2, 9, 1.2, -3.2, { base: SHELF });
+    // ceiling lamps (emissive, no extra light cost)
+    const lm = new THREE.MeshBasicMaterial({ color: '#fff6e0' });
+    for (const x of [-10, -3, 4, 11]) for (const z of [-5, 3]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 0.2, 10), lm); m.position.set(x, H - 0.15, z); w.group.add(m); }
+    w.spawns.push(new V3(-6, 0, Z + 2), new V3(6, 0, Z + 2), new V3(-13, 0, -8), new V3(12, 4.0, -8));
+    w.box(-8, -0.5, Z, -4, 0, Z + 4, { base: asphalt }); w.box(4, -0.5, Z, 8, 0, Z + 4, { base: asphalt });
+    w.start = { x: 0, z: 7, yaw: Math.PI };
+    w.wallSpot = { x: 0, y: 0, z: Z - 0.05, yaw: Math.PI };
+  },
+
+  // Metro: an underground platform over the tracks, a parked train, tiled walls and strip lights
+  metro(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#1a1e24'); g.scene.fog = new THREE.Fog('#1a1e24', 14, 40);
+    w.sky('#14181e', '#1a1e24', '#22272e', new V3(0, 1, 0), '#000000');
+    w.lights('#d6e4ff', '#3a3632', 1.5, '#e8f0ff', 1.1, new V3(4, 18, 2));
+    const L = 22, H = 4.2, PL = 1.2, TILE = subway, FLOOR = tiles('#8c8f8a', 'rgba(0,0,0,0.25)');
+    // platform (z -4..4) at 1.2, track pit (z 4..10) at 0, far wall
+    w.box(-L, -0.5, -4, L, PL, 4, { base: FLOOR });
+    w.box(-L, -0.5, 4, L, 0, 10, { base: concrete('#4a4642', 9) });
+    w.box(-L, PL, 3.75, L, PL + 0.02, 4.0, { color: '#e8c21c' });                                                    // yellow edge line
+    w.box(-L, 0, 10, L, H + PL, 10.3, { base: TILE }); w.box(-L, PL, -4.3, L, H + PL, -4, { base: TILE });
+    w.box(-L - 0.3, -0.5, -4.3, -L, H + PL, 10.3, { base: TILE }); w.box(L, -0.5, -4.3, L + 0.3, H + PL, 10.3, { base: TILE });
+    w.box(-L, H + PL, -4.3, L, H + PL + 0.3, 10.3, { base: concrete('#5a5a58', 9) });
+    // rails
+    for (const z of [6.2, 7.8]) w.box(-L, 0, z - 0.04, L, 0.16, z + 0.04, { base: metal('#6a6e74') });
+    // the train: a long carriage with windows on the far track
+    const CAR = metal('#c7ccd2');
+    w.box(-12, 0.2, 5.4, 8, 3.2, 8.6, { base: CAR });
+    w.box(-12, 1.6, 5.38, 8, 2.5, 5.4, { color: '#1c2430' });
+    // pillars, benches, stairs up (blocked by a shutter)
+    for (const x of [-15, -8, -1, 6, 13]) w.box(x - 0.3, PL, -0.3, x + 0.3, H + PL, 0.3, { base: TILE });
+    for (const x of [-11.5, -4.5, 2.5, 9.5]) w.box(x - 1, PL, -3.6, x + 1, PL + 0.45, -3.1, { base: planks('#7a4a28', 'rgba(40,20,5,0.4)') });
+    for (let i = 0; i < 8; i++) w.box(-L + 1.5 + i * 0.35, PL, -3.9, -L + 1.85 + i * 0.35, PL + (i + 1) * 0.3, -1.6, { base: FLOOR });
+    w.box(-L + 4.3, PL, -3.9, -L + 4.5, H + PL, -1.6, { base: metal('#5a5f66') });
+    const lm = new THREE.MeshBasicMaterial({ color: '#eaf2ff' });
+    for (let x = -18; x <= 18; x += 4) { const m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.14), lm); m.position.set(x, H + PL - 0.05, 0); w.group.add(m); }
+    w.spawns.push(new V3(-17, PL, 2), new V3(17, PL, 2), new V3(0, 0, 9), new V3(17, PL, -2));
+    w.start = { x: 10, z: -1.6, y: PL, yaw: Math.PI / 2 };
+    w.wallSpot = { x: 14.5, y: PL, z: -3.95, yaw: 0 };
+  },
+
+  // Chapel: a stone nave with pews, an altar and tall stained glass that breaks
+  chapel(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#8fc0f0'); g.scene.fog = new THREE.Fog('#9fbede', 25, 80);
+    const sunDir = new V3(0.6, 0.6, -0.5); w.sky('#3d7fd6', '#7fb4ec', '#d6e8f6', sunDir, '#fff6dc');
+    w.lights('#f2e8d8', '#6a5a48', 1.7, '#fff0d0', 2.2, sunDir.clone().multiplyScalar(40)); w.scenery();
+    const X = 6, Z = 13, H = 7, T = 0.5, ST = stone('#b4aa98'), WOODP = planks('#6e4426', 'rgba(30,15,5,0.45)');
+    w.box(-30, -1, -30, 30, 0, 30, { base: asphalt });
+    w.box(-X, -0.02, -Z, X, 0.03, Z, { base: tiles('#8f8476', 'rgba(0,0,0,0.2)') });
+    // side walls with four tall windows each, stained glass panes
+    const COLS = [0xb02828, 0x2850b0, 0x2a9a4a, 0xc8a020];
+    for (const sx of [-1, 1]) {
+      const x0 = sx < 0 ? -X - T : X, x1 = sx < 0 ? -X : X + T;
+      let z = -Z;
+      [-8, -3, 2, 7].forEach((wz, i) => {
+        w.box(x0, 0, z, x1, H, wz - 0.8, { base: ST });
+        w.box(x0, 0, wz - 0.8, x1, 1.6, wz + 0.8, { base: ST });
+        w.box((x0 + x1) / 2 - 0.04, 1.6, wz - 0.8, (x0 + x1) / 2 + 0.04, 5.2, wz + 0.8, { glass: true, glassColor: COLS[(i + (sx > 0 ? 2 : 0)) % 4] });
+        w.box(x0, 5.2, wz - 0.8, x1, H, wz + 0.8, { base: ST });
+        z = wz + 0.8;
+      });
+      w.box(x0, 0, z, x1, H, Z, { base: ST });
+    }
+    w.box(-X - T, 0, -Z - T, X + T, H, -Z, { base: ST });
+    w.box(-X - T, 0, Z, -1.2, H, Z + T, { base: ST }); w.box(1.2, 0, Z, X + T, H, Z + T, { base: ST }); w.box(-1.2, 3.2, Z, 1.2, H, Z + T, { base: ST });
+    // pitched roof beams + roof
+    for (let z = -Z; z <= Z; z += 3) { const b = new THREE.Mesh(new THREE.BoxGeometry(X * 2 + 1, 0.25, 0.25), new THREE.MeshLambertMaterial({ color: '#4a2e1a' })); b.position.set(0, H - 0.2, z); w.group.add(b); }
+    w.box(-X - T, H, -Z - T, X + T, H + 0.3, Z + T, { base: planks('#4a2e1a', 'rgba(0,0,0,0.3)') });
+    // pews either side of the aisle, altar on a step
+    for (let z = -6; z <= 9; z += 1.5) for (const sx of [-1, 1]) {
+      w.box(sx * 1.0, 0, z, sx * 5.2, 0.45, z + 0.45, { base: WOODP });
+      w.box(sx * 1.0, 0.45, z + 0.38, sx * 5.2, 1.0, z + 0.48, { base: WOODP });
+    }
+    w.box(-X, 0, -Z, X, 0.4, -9, { base: tiles('#a89c88', 'rgba(0,0,0,0.2)') });
+    w.box(-1.4, 0.4, -11.5, 1.4, 1.4, -10.6, { base: stone('#d8d0c0') });
+    w.box(-0.08, 1.4, -11.1, 0.08, 2.6, -11.0, { color: '#c8a020' }); w.box(-0.45, 2.1, -11.1, 0.45, 2.25, -11.0, { color: '#c8a020' });
+    w.spawns.push(new V3(0, 0, Z + 3), new V3(-3, 0, Z + 3), new V3(3, 0, Z + 3), new V3(0, 0.4, -11));
+    w.start = { x: 0, z: -7.5, yaw: 0 };
+    w.wallSpot = { x: -3.8, y: 0.4, z: -Z + 0.05, yaw: 0 };
+  },
+
+  // Downtown: a city crossroads, buildings on every corner, parked cars, a bus stop
+  downtown(w) {
+    const g = w.g;
+    g.scene.background = new THREE.Color('#8fc0f0'); g.scene.fog = new THREE.Fog('#a9cdf0', 35, 110);
+    const sunDir = new V3(0.5, 0.8, 0.35); w.sky('#3d7fd6', '#7fb4ec', '#d6e8f6', sunDir, '#fff6dc');
+    w.lights('#e6efff', '#8a8578', 2.0, '#fff4e0', 2.4, sunDir.clone().multiplyScalar(45)); w.scenery({ r: 95 });
+    const R = 6, S = 2.5, B = 28;                                                       // road half-width, sidewalk width, block extent
+    w.box(-B - 2, -1, -B - 2, B + 2, 0, B + 2, { base: road });
+    const FAC = [facade('#c9b98a', '#9e9170'), facade('#a9b6bf', '#86929a'), facade('#c98a6a', '#a06a50'), facade('#9aa3a0', '#7b8481'), facade('#d8c64e', '#b3a54a'), facade('#7b5fb8', '#5d4790')];
+    let k = 0;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const x0 = sx * R, x1 = sx * B, z0 = sz * R, z1 = sz * B;
+      w.box(Math.min(x0, x1), 0, Math.min(z0, z1), Math.max(x0, x1), 0.15, Math.max(z0, z1), { base: tiles('#b9b6ae', 'rgba(0,0,0,0.15)') });   // sidewalk
+      const bx0 = sx * (R + S), bz0 = sz * (R + S);
+      // two buildings per corner with an alley between
+      w.box(Math.min(bx0, sx * 16), 0, Math.min(bz0, z1), Math.max(bx0, sx * 16), 9 + (k % 3) * 3, Math.max(bz0, z1), { base: FAC[k % 6] }); k++;
+      w.box(Math.min(sx * 18, x1), 0, Math.min(bz0, z1), Math.max(sx * 18, x1), 7 + (k % 3) * 3, Math.max(bz0, z1), { base: FAC[k % 6] }); k++;
+    }
+    // parked cars (body + cabin)
+    const CARS = [['#b8322a', -3.5, 11, 0], ['#2a5ab8', 3.5, -12, 0], ['#e8e4dc', -12, 3.5, 1], ['#2a2b30', 13, -3.5, 1], ['#3a8a4a', 3.5, 16, 0]];
+    for (const [c, x, z, rot] of CARS) {
+      const hx = rot ? 2.1 : 0.9, hz = rot ? 0.9 : 2.1;
+      w.box(x - hx, 0.25, z - hz, x + hx, 0.95, z + hz, { base: metal(c) });
+      w.box(x - hx * (rot ? 0.55 : 0.9), 0.95, z - hz * (rot ? 0.9 : 0.55), x + hx * (rot ? 0.55 : 0.9), 1.45, z + hz * (rot ? 0.9 : 0.55), { base: metal('#2a3442') });
+    }
+    // bus stop shelter with a glass back, traffic light posts
+    w.box(R + 0.6, 0.15, -12, R + 2.2, 2.6, -11.9, { glass: true });
+    w.box(R + 0.6, 2.6, -12.2, R + 2.4, 2.7, -8.8, { base: metal('#5a6068') });
+    w.box(R + 0.9, 0.15, -11.7, R + 2.0, 0.6, -9.2, { base: metal('#7a8088') });
+    for (const [x, z] of [[R + 0.3, R + 0.3], [-R - 0.3, -R - 0.3], [R + 0.3, -R - 0.3], [-R - 0.3, R + 0.3]]) w.box(x - 0.08, 0.15, z - 0.08, x + 0.08, 4, z + 0.08, { base: metal('#3a3d42') });
+    w.spawns.push(new V3(0, 0, -B + 2), new V3(0, 0, B - 2), new V3(-B + 2, 0, 0), new V3(B - 2, 0, 0));
+    w.start = { x: 4.5, z: 12, yaw: -Math.PI / 2 };
+    w.wallSpot = { x: R + S - 0.05, y: 0.15, z: 12, yaw: -Math.PI / 2 };
+  },
+
   // Rooftops: four flat roofs 12 m up, brick parapets, plank bridges. Everyone goes over the edge eventually.
   roofs(w) {
     const g = w.g;
@@ -239,10 +533,9 @@ const MAPS = {
     w.box(2.5, Y, -5.5, 4.5, Y + 0.8, -4.5, { base: metal('#a7adb4') });
     w.box(13, Y, -4.5, 14, Y + 1.0, -3.5, { base: metal('#a7adb4') });
     w.box(2, YC, 15, 4.5, YC + 2.2, 17.5, { base: metal('#8c6c4a') });
-    w.table(0, 3.2, 3.6, 0);
-    const T = w.racks[w.racks.length - 1]; T.pos.y += Y; for (const b of w.g.phys.boxes.slice(-5)) { b.min.y += Y; b.max.y += Y; if (b.mesh) b.mesh.position.y += Y; }
     w.spawns.push(new V3(-4.5, Y, -2.9), new V3(16.4, Y, 3), new V3(-4, YC, 16.4), new V3(16.4, YD, 18));
-    w.start = { x: 0, z: 2.2, yaw: Math.PI };
+    w.start = { x: 0, z: 2.2, y: Y, yaw: Math.PI };
+    w.wallSpot = { x: -3.5, y: Y, z: 6.3, yaw: Math.PI };
     w.fallY = 6;
   },
 
@@ -284,9 +577,9 @@ const MAPS = {
     // crates and a low wall to vault over
     w.box(-3, 0, 4.2, -1.8, 0.9, 5.4, { base: concrete('#9c7a4a', 0.3) });
     w.box(6, 0, -1.2, 6.4, 1.0, 1.2, { base: concrete('#a8aaae', 0.5) });
-    w.table(13, 0, 3.6, Math.PI / 2);
     w.spawns.push(new V3(-21, 0, -2), new V3(-21, 0, 2), new V3(1.2, 0, 11), new V3(-21, 0, 0));
     w.start = { x: 11.8, z: 0, yaw: -Math.PI / 2 };
+    w.wallSpot = { x: 17.95, y: 0, z: 0, yaw: -Math.PI / 2 };
   },
 
   // Dust Yard: brutalist concrete compound in the desert at sunset. Roof to throw people off, a glass office, a tower.
@@ -336,9 +629,9 @@ const MAPS = {
     // pillars of a half-built frame
     for (const x of [-2, 2]) w.box(x - 0.2, 0, 8.6, x + 0.2, 3.2, 9, { base: CON });
     w.box(-2.2, 3.2, 8.5, 2.2, 3.5, 9.1, { base: CON2 });
-    w.table(4.2, 7.6, 3.6, 0);
     w.spawns.push(new V3(0, 0, -22), new V3(-20, 0, -8), new V3(20, 0, -6), new V3(-18, 0, 14), new V3(18, 0, 16), new V3(0, 0, 22));
     w.start = { x: 4.2, z: 6.6, yaw: Math.PI };
+    w.wallSpot = { x: 4.2, y: 0, z: 8.4, yaw: Math.PI };
   },
 
   // The Block: concrete-and-brick interior at night, cold strip lights.
@@ -384,7 +677,7 @@ const MAPS = {
     w.box(-S, 1.0, 4.55, -6, 2.6, 4.65, { glass: true });
     w.box(-6.2, 0, 4.7, -6, 2.6, 7, { base: CON });
     w.box(-6.2, 2.6, 4.5, -S, 2.8, 7, { base: CON });
-    w.table(4.6, 8.1, 3.6, 0);
     w.start = { x: 4.6, z: 7.0, yaw: Math.PI };
+    w.wallSpot = { x: 4.6, y: 0, z: 8.95, yaw: Math.PI };
   },
 };

@@ -1,7 +1,7 @@
 // You: WebXR rig (Quest) or mouse + keyboard. Solid geometric gloves, grabs, throws, kicks, headbutts.
-import * as THREE from '../vendor/three.module.js?v=1';
-import { DT } from './phys.js?v=1';
-import { DEFS, Weapon } from './arsenal.js?v=1';
+import * as THREE from '../vendor/three.module.js?v=3';
+import { DT } from './phys.js?v=3';
+import { DEFS, Weapon } from './arsenal.js?v=3';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const UP = new V3(0, 1, 0);
 const _v = new V3(), _w = new V3(), _q = new Q(), _m = new THREE.Matrix4(), _e = new THREE.Euler();
@@ -82,7 +82,7 @@ export class Player {
 
   get vr() { return this.g.renderer.xr.isPresenting; }
   spawn(x, z, yaw) {
-    this.dolly.position.set(x, this.g.phys.groundAt(x, z, 200), z);
+    this.dolly.position.set(x, this.g.phys.groundAt(x, z, ((this.g.world.start && this.g.world.start.y) || 0) + 0.5), z);
     this.dolly.rotation.set(0, 0, 0);
     this.yaw = yaw; this.pitch = 0; this.vy = 0;
     if (this.vr) this.dolly.rotation.y = yaw;
@@ -114,7 +114,7 @@ export class Player {
       if (e.code === 'KeyR' && R.held && R.held.def.gun) this.g.reload(R.held);
       if (e.code === 'KeyB' && R.held && R.held.def.gun) this.g.cycleFire(R.held);
       const n = parseInt(e.key, 10);
-      if (n >= 1 && n <= 9) this.g.equipSlot(n - 1, R);
+      if (n >= 1 && n <= 4) this.holsterKey(n - 1);
       if (e.code === 'Space' && this.onGround) { this.vy = 4.3; this.onGround = false; }
     });
     addEventListener('keyup', e => { this.keys[e.code] = false; });
@@ -154,7 +154,8 @@ export class Player {
     if (button === 0) R.btn.trig = down;
     if (!down) return;
     if (R.grabP && button === 0) { this.releaseGrab(R, this.lookDir(new V3()).multiplyScalar(9).add(new V3(0, 2, 0))); return; }
-    if (button === 0 && R.held && !R.held.def.gun) this.startSwing();
+    if (button === 0 && R.held && R.held.def.saw) { /* trigger runs the saw */ }
+    else if (button === 0 && R.held && !R.held.def.gun) this.startSwing();
     else if (button === 0 && !R.held) this.startPunch(R);
     else if (button === 2) { if (L.held && L.held.def.gun) L.btn.trig = true; else this.startPunch(L); }
   }
@@ -179,12 +180,13 @@ export class Player {
   startButt() { if (this.butt) return; this.butt = { u: 0, dur: 0.3 }; }
   deskInteract() {
     const R = this.hands.right;
+    if (this.g.hoverBtn) { this.g.hoverBtn.press(); return; }
     if (R.grabP) { this.releaseGrab(R, new V3()); return; }
     if (R.held) return;
     const eye = this.head, dir = this.lookDir(new V3());
     let best = null, bd = 1e9;
     for (const w of this.g.weapons) {
-      if (w.mode === 'held') continue;
+      if (w.mode === 'held' || w.mode === 'holstered') continue;
       _v.subVectors(w.pos, eye); const along = _v.dot(dir);
       if (along < 0 || along > 2.4) continue;
       const off = _v.addScaledVector(dir, -along).length();
@@ -201,6 +203,15 @@ export class Player {
       if (off < 0.35 && along + off * 3 < bd) { bd = along + off * 3; bp = p; }
     }
     if (bp) this.grabPart(R, bp);
+  }
+  // desktop: 1-4 = holsters (hips, then shoulders). Holding something puts it away (or swaps), empty hand draws.
+  holsterKey(i) {
+    const H = this.g.holsters, sl = H.slots[i], R = this.hands.right;
+    if (!sl) return;
+    const held = R.held;
+    if (held && sl.w) { const other = sl.w; sl.w = null; H.put(sl, held); other.mesh.visible = true; other.mode = 'rack'; other.grab(R, other.def.mount === 'gun' ? 0 : other.def.handle[0] + 0.08); return; }
+    if (held) { H.put(sl, held); return; }
+    if (sl.w) H.take(sl, R);
   }
   deskDrop() {
     const R = this.hands.right;
@@ -228,7 +239,7 @@ export class Player {
   update(dt) {
     const g = this.g;
     this.headPrev.copy(this.head);
-    for (const h of this.H) { h.p0.copy(h.pos); h.prevBtn = { ...h.btn }; }
+    for (const h of this.H) h.p0.copy(h.pos);
     if (this.vr) this.updateVR(dt); else this.updateDesk(dt);
     this.cam.getWorldPosition(this.head);
     for (const h of this.H) {
@@ -246,6 +257,7 @@ export class Player {
     this.hurtSphere.material.opacity = Math.max(0, this.hurtT) * 0.9 + (this.dead ? 0.6 : 0);
     this.hurtSphere.visible = this.vr && this.hurtSphere.material.opacity > 0.01;
     this.updateWristHud(dt);
+    for (const h of this.H) { h.trigTap = h.pressed('trig'); h.prevBtn = { ...h.btn }; }   // after actions, so a click between frames counts as a press
   }
 
   move(dx, dz, dt) {
@@ -303,7 +315,7 @@ export class Player {
     let lp = new V3(0.24 * side, -0.28, -0.42), e = new V3(0, 0, 0);
     if (side < 0 && !w) lp.set(-0.26, -0.34, -0.34);
     if (h.grabP) lp.set(0.12 * side, -0.05, -0.75);
-    if (w && w.def.gun) lp.set(0.16 * side, -0.17, -0.42);
+    if (w && w.def.mount === 'gun') lp.set(0.16 * side, w.def.mass > 4 ? -0.3 : -0.17, w.def.mass > 4 ? -0.32 : -0.42);
     if (w && w.def.twoHand && side > 0) lp.set(0.16, -0.32, -0.38);
     // swings (right hand)
     if (side > 0 && this.swing && w && !w.def.gun) {
@@ -321,7 +333,7 @@ export class Player {
       if (pu.u >= 1) this.punch = null;
     }
     h.pos.copy(lp).applyQuaternion(camQ).add(this.cam.getWorldPosition(_w));
-    if (w && w.def.gun) {
+    if (w && w.def.mount === 'gun') {
       const aim = this.cam.getWorldPosition(new V3()).addScaledVector(this.lookDir(new V3()), 18);
       _m.lookAt(h.pos, aim, UP); h.quat.setFromRotationMatrix(_m);
     } else {
@@ -379,7 +391,7 @@ export class Player {
         if (!h.src) continue;
         if (h.pressed('grip')) this.vrGrab(h);
         if (h.released('grip')) {
-          if (h.held) h.held.release(h, h.vel.clone().multiplyScalar(1.15));
+          if (h.held) { const hs = h.held.hands.length === 1 && this.g.holsters.nearest(h.pos, 0.24, false); if (hs) this.g.holsters.put(hs, h.held); else h.held.release(h, h.vel.clone().multiplyScalar(1.15)); }
           if (h.grabP) this.releaseGrab(h, h.vel.clone().multiplyScalar(1.3));
         }
         if (h.held && h.held.def.gun && h.pressed('b')) g.reload(h.held);
@@ -389,6 +401,7 @@ export class Player {
     for (const h of this.H) {
       const w = h.held;
       if (w && w.def.gun && w.hands[0] === h) g.trigger(w, h.btn.trig, h.pressed('trig'), dt);
+      if (w && w.def.saw && w.hands[0] === h) g.sawCtl(w, h.btn.trig, h.pressed('trig'), dt);
     }
     if (!this.vr) this.hands.left.btn.trig = false;
     // kick animation
@@ -399,12 +412,20 @@ export class Player {
   }
   vrGrab(h) {
     if (h.held || h.grabP) return;
+    const hs = this.g.holsters.nearest(h.pos, 0.22, true);
+    if (hs) { this.g.holsters.take(hs, h); return; }
     let best = null, bd = 0.16, by = 0;
     for (const w of this.g.weapons) {
-      if (w.hands.includes(h)) continue;
+      if (w.hands.includes(h) || w.mode === 'holstered') continue;
       const lp = _v.copy(h.pos).sub(w.pos).applyQuaternion(_q.copy(w.quat).invert());
       if (w.def.mount === 'gun') {
-        const d = lp.length(); if (d < bd) { bd = d; best = w; by = 0; }
+        let d = lp.length();
+        if (w.def.twoHand && w.mode === 'held') {                       // support hand anywhere along the barrel
+          const e0 = new V3().fromArray(w.def.ends[0]), e1 = new V3().fromArray(w.def.ends[1]), ab = e1.clone().sub(e0);
+          const t = Math.max(0, Math.min(1, lp.clone().sub(e0).dot(ab) / ab.lengthSq()));
+          d = lp.distanceTo(e0.addScaledVector(ab, t)) * 0.8;
+        }
+        if (d < bd) { bd = d; best = w; by = 0; }
         continue;
       }
       const y = Math.max(w.def.handle[0], Math.min(w.def.handle[1], lp.y));
@@ -412,7 +433,7 @@ export class Player {
       if (d < bd) { bd = d; best = w; by = y; }
     }
     if (best) {
-      if (best.mode === 'held' && best.def.mount === 'gun') return;
+      if (best.mode === 'held' && best.def.mount === 'gun' && !best.def.twoHand) return;
       best.grab(h, by); this.g.sfx.play('click', h.pos, 0.4, 0.7); return;
     }
     let bp = null; bd = 0.17;

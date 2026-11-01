@@ -1,7 +1,8 @@
 // Weapons: real mass, held on a spring so heavy things lag behind your hand.
 // Local frame: grip at origin. Melee: handle along +Y, cutting edge faces -Z. Guns: barrel along -Z.
-import * as THREE from '../vendor/three.module.js?v=1';
-import { Particle, DT } from './phys.js?v=1';
+import * as THREE from '../vendor/three.module.js?v=3';
+import { Particle, DT } from './phys.js?v=3';
+import { MODELS } from './models.js?v=3';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 
 const M = {};
@@ -30,7 +31,7 @@ export const DEFS = {
     ends: [[0, -0.08, 0], [0, 1.45, 0]],
   },
   shovel: {
-    name: 'Spade', mass: 2.4, price: 250, handle: [-0.1, 0.88],
+    name: 'Spade', mass: 2.4, price: 250, handle: [-0.1, 0.88], wide: true,
     build() { const g = new THREE.Group(); cyl(g, 0.018, 0.017, 1.05, WOOD, 0, 0.42); box(g, 0.1, 0.03, 0.03, WOOD, 0, -0.1); box(g, 0.22, 0.27, 0.012, 0x8d9399, 0, 1.1); box(g, 0.224, 0.02, 0.014, EDGE, 0, 1.235); box(g, 0.05, 0.08, 0.03, 0x8d9399, 0, 0.95); return g; },
     shapes: [{ a: [0, -0.1, 0], b: [0, 0.95, 0], r: 0.022 }, { a: [0, 0.98, 0], b: [0, 1.22, 0], r: 0.07 },
       { a: [-0.1, 1.24, 0], b: [0.1, 1.24, 0], r: 0.016, edge: [0, 1, 0], sharp: 1.0 },
@@ -61,7 +62,110 @@ export const DEFS = {
     shapes: [{ a: [0, 0.04, 0.04], b: [0, 0.045, -0.16], r: 0.03 }],
     ends: [[0, 0, 0.03], [0, 0.045, -0.16]],
   },
+  chainsaw: {
+    name: 'Chainsaw', mass: 5.5, price: 2200, handle: [-0.02, 0.12], saw: true,
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.1, 0.16, 0.26, 0xd6462a, 0, 0.02, 0.08); box(g, 0.1, 0.05, 0.12, DARK, 0, 0.12, 0.1);          // engine body + top
+      cyl(g, 0.016, 0.016, 0.12, DARK, 0, 0.13, -0.02, 'x');                                                     // front handle
+      box(g, 0.012, 0.075, 0.62, STEEL, 0, 0.0, -0.33);                                                           // bar
+      const chain = box(g, 0.016, 0.085, 0.64, 0x2d2d30, 0, 0.0, -0.33); chain.scale.y = 1;                      // chain rim
+      g.userData.chain = chain;
+      cyl(g, 0.01, 0.01, 0.05, GRIP, 0.055, 0.06, 0.12, 'x');                                                     // pull cord
+      return g;
+    },
+    shapes: [{ a: [0, 0.02, 0.18], b: [0, 0.02, -0.02], r: 0.08 },
+      { a: [0, 0.0, -0.04], b: [0, 0.0, -0.64], r: 0.045, edge: [0, -1, 0], double: true, sharp: 1.6, saw: true }],
+    ends: [[0, 0.02, 0.2], [0, 0, -0.64]], mount: 'gun', twoHand: true,
+  },
+  m16: {
+    name: 'M16', mass: 3.3, price: 1800, handle: [-0.06, 0.06], mount: 'gun', twoHand: true,
+    gun: { dmg: 1.3, pen: 2.2, force: 3.6, mag: 30, sound: 'rifle', recoil: 0.35, auto: false, rpm: 760, reload: 1.6, modes: ['semi', 'burst', 'auto'] },
+    muzzle: [0, 0.06, -0.62],
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.035, 0.06, 0.32, DARK, 0, 0.05, -0.08); box(g, 0.03, 0.05, 0.22, 0x2a2a2c, 0, 0.04, 0.2);         // receiver + stock
+      cyl(g, 0.009, 0.009, 0.36, DARK, 0, 0.06, -0.42, 'z'); box(g, 0.04, 0.04, 0.2, 0x26262a, 0, 0.055, -0.3); // barrel + handguard
+      box(g, 0.026, 0.09, 0.04, GRIP, 0, -0.02, 0.0, 0.2); box(g, 0.01, 0.035, 0.12, DARK, 0, 0.1, -0.04);       // grip + carry handle
+      // open magazine: rounds visible in a slot
+      const mag = box(g, 0.026, 0.13, 0.05, 0x3b3b3e, 0, -0.04, -0.12, -0.2);
+      g.userData.rounds = []; for (let i = 0; i < 10; i++) { const r = cyl(g, 0.004, 0.004, 0.012, BRASS, 0.014, -0.0 - i * 0.011, -0.115 - i * 0.002, 'z', 5); g.userData.rounds.push(r); }
+      g.userData.roundsPer = 3;
+      return g;
+    },
+    shapes: [{ a: [0, 0.05, 0.3], b: [0, 0.06, -0.6], r: 0.035 }],
+    ends: [[0, 0.04, 0.3], [0, 0.06, -0.6]],
+  },
+  bolt: {
+    name: 'Hunting Rifle', mass: 3.8, price: 1400, handle: [-0.06, 0.06], mount: 'gun', twoHand: true,
+    gun: { dmg: 2.6, pen: 4.5, force: 7, mag: 5, sound: 'rifle', recoil: 0.9, auto: false, rpm: 55, reload: 2.4 },
+    muzzle: [0, 0.055, -0.8],
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.04, 0.07, 0.9, WOOD, 0, 0.02, -0.1); cyl(g, 0.01, 0.01, 0.5, DARK, 0, 0.055, -0.55, 'z');
+      cyl(g, 0.018, 0.018, 0.2, 0x202024, 0, 0.11, -0.12, 'z'); cyl(g, 0.006, 0.006, 0.05, STEEL, 0.03, 0.06, 0.02, 'x');  // scope + bolt
+      box(g, 0.03, 0.08, 0.04, WOOD, 0, -0.04, 0.02, 0.25);
+      g.userData.rounds = []; for (let i = 0; i < 5; i++) { const r = cyl(g, 0.005, 0.005, 0.02, BRASS, 0.02, 0.02, -0.08 - i * 0.025, 'z', 5); g.userData.rounds.push(r); }
+      return g;
+    },
+    shapes: [{ a: [0, 0.03, 0.35], b: [0, 0.055, -0.8], r: 0.04 }],
+    ends: [[0, 0.02, 0.35], [0, 0.055, -0.8]],
+  },
+  minigun: {
+    name: 'Minigun', mass: 14, price: 7000, handle: [-0.06, 0.06], mount: 'gun', twoHand: true,
+    gun: { dmg: 1.1, pen: 2, force: 3, mag: 400, sound: 'rifle', recoil: 0.12, auto: true, rpm: 2200, reload: 3.5, spin: true },
+    muzzle: [0, 0.03, -0.75],
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.14, 0.14, 0.32, DARK, 0, 0.03, 0.04);
+      const barrels = new THREE.Group(); barrels.position.set(0, 0.03, -0.42); g.add(barrels);
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cyl(barrels, 0.012, 0.012, 0.62, 0x2c2c30, Math.cos(a) * 0.035, Math.sin(a) * 0.035, 0, 'z', 6); }
+      cyl(barrels, 0.05, 0.05, 0.03, 0x3a3a3e, 0, 0, -0.25, 'z', 10); g.userData.barrels = barrels;
+      box(g, 0.03, 0.1, 0.04, GRIP, 0, -0.07, 0.12); box(g, 0.2, 0.03, 0.03, GRIP, 0, 0.14, -0.05);
+      box(g, 0.12, 0.16, 0.14, 0x4a5235, 0.12, -0.02, 0.08);                                                       // ammo box
+      return g;
+    },
+    shapes: [{ a: [0, 0.03, 0.2], b: [0, 0.03, -0.72], r: 0.08 }],
+    ends: [[0, 0.03, 0.2], [0, 0.03, -0.72]],
+  },
+  nailer: {
+    name: 'Nail Launcher', mass: 2.6, price: 1600, handle: [-0.06, 0.06], mount: 'gun',
+    gun: { dmg: 0.7, pen: 1.2, force: 2, mag: 24, sound: 'nail', recoil: 0.3, auto: false, rpm: 300, reload: 1.4, nail: true },
+    muzzle: [0, 0.07, -0.3],
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.07, 0.11, 0.3, 0xe0b22a, 0, 0.06, -0.12); box(g, 0.03, 0.12, 0.05, DARK, 0, -0.03, 0.03, 0.2);
+      cyl(g, 0.012, 0.012, 0.06, STEEL, 0, 0.07, -0.29, 'z'); box(g, 0.02, 0.03, 0.22, 0x8a8f96, 0, -0.0, -0.16, 0);  // nose + nail strip
+      g.userData.rounds = []; for (let i = 0; i < 12; i++) { const r = cyl(g, 0.0025, 0.0025, 0.04, STEEL, 0, -0.02, -0.06 - i * 0.017, 'y', 4); g.userData.rounds.push(r); }
+      g.userData.roundsPer = 2;
+      return g;
+    },
+    shapes: [{ a: [0, 0.06, 0.04], b: [0, 0.07, -0.3], r: 0.05 }],
+    ends: [[0, 0.03, 0.04], [0, 0.07, -0.3]],
+  },
+  cannon: {
+    name: 'Hand-Cannon', mass: 2.4, price: 2600, handle: [-0.06, 0.06], mount: 'gun',
+    gun: { dmg: 3, pen: 6, force: 9, mag: 6, sound: 'cannon', recoil: 1.6, auto: false, rpm: 110, reload: 2.2 },
+    muzzle: [0, 0.06, -0.36],
+    build() {
+      const g = new THREE.Group();
+      cyl(g, 0.026, 0.026, 0.3, 0x2e2f33, 0, 0.06, -0.2, 'z', 10); cyl(g, 0.04, 0.04, 0.08, 0x45474c, 0, 0.055, -0.02, 'z', 6); // barrel + cylinder
+      box(g, 0.035, 0.12, 0.05, WOOD, 0, -0.03, 0.04, 0.3); box(g, 0.008, 0.03, 0.03, DARK, 0, 0.0, -0.01);
+      g.userData.rounds = []; for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const r = cyl(g, 0.009, 0.009, 0.012, 0xc4362e, Math.cos(a) * 0.024, 0.055 + Math.sin(a) * 0.024, 0.025, 'z', 6); g.userData.rounds.push(r); }
+      return g;
+    },
+    shapes: [{ a: [0, 0.04, 0.06], b: [0, 0.06, -0.35], r: 0.04 }],
+    ends: [[0, 0.02, 0.06], [0, 0.06, -0.35]],
+  },
+  mallet: {
+    name: 'Gilded Mallet', mass: 1.6, price: 25000, handle: [-0.06, 0.4], homerun: true,
+    build() { const g = new THREE.Group(); cyl(g, 0.018, 0.016, 0.55, 0x6b3b1f, 0, 0.2); cyl(g, 0.07, 0.07, 0.2, 0xe6b422, 0, 0.5, 0, 'z', 14); return g; },
+    shapes: [{ a: [0, -0.06, 0], b: [0, 0.42, 0], r: 0.022 }, { a: [0, 0.5, 0.1], b: [0, 0.5, -0.1], r: 0.075 }],
+    ends: [[0, -0.06, 0], [0, 0.5, 0]],
+  },
 };
+
+for (const k in MODELS) if (DEFS[k]) DEFS[k].build = MODELS[k];
 
 const MOUNT_MELEE = new Q().setFromAxisAngle(new V3(1, 0, 0), -0.95);
 const _v = new V3(), _w = new V3(), _q = new Q(), _q2 = new Q();
@@ -115,7 +219,7 @@ export class Weapon {
       const h2 = this.hands[1], d = h2.lerpPos(alpha, new V3()).sub(hp);
       if (d.lengthSq() > 0.004) {
         d.normalize(); if (this.grabY[1] < gy) d.negate();
-        const cur = new V3(0, 1, 0).applyQuaternion(tq);
+        const cur = (this.def.mount === 'gun' ? new V3(0, 0, -1) : new V3(0, 1, 0)).applyQuaternion(tq);
         tq.premultiply(new Q().setFromUnitVectors(cur, d));
       }
     }
@@ -171,7 +275,8 @@ export class Weapon {
   sync() {
     this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat);
     const r = this.mesh.userData.rounds;
-    if (r) for (let i = 0; i < r.length; i++) r[i].visible = i < this.ammo;
+    if (r) { const per = this.mesh.userData.roundsPer || 1; for (let i = 0; i < r.length; i++) r[i].visible = i < Math.ceil(this.ammo / per); }
+    const bar = this.mesh.userData.barrels; if (bar) bar.rotation.z += (this.spin || 0) * 0.016 * 60;
   }
   impale(p) {
     if (this.impaled.some(i => i.p === p)) return;
@@ -179,5 +284,5 @@ export class Weapon {
     this.impaled.push({ p, local: local.toArray(), pin: new V3(), t: this.g.time });
   }
   unimpale(i) { const im = this.impaled[i]; im.p.pin = null; im.p.addVel(this.vel); this.impaled.splice(i, 1); }
-  dispose() { this.g.scene.remove(this.mesh); this.dropLoose(); for (let i = this.impaled.length - 1; i >= 0; i--) this.unimpale(i); }
+  dispose() { if (this.motor) { this.motor.stop(); this.motor = null; } this.g.scene.remove(this.mesh); this.dropLoose(); for (let i = this.impaled.length - 1; i >= 0; i--) this.unimpale(i); }
 }
