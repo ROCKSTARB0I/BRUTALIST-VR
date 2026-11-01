@@ -1,0 +1,183 @@
+// Weapons: real mass, held on a spring so heavy things lag behind your hand.
+// Local frame: grip at origin. Melee: handle along +Y, cutting edge faces -Z. Guns: barrel along -Z.
+import * as THREE from '../vendor/three.module.js?v=1';
+import { Particle, DT } from './phys.js?v=1';
+const V3 = THREE.Vector3, Q = THREE.Quaternion;
+
+const M = {};
+function mat(hex) { return M[hex] || (M[hex] = new THREE.MeshLambertMaterial({ color: hex })); }
+const WOOD = 0x8a5a33, STEEL = 0xb9bec4, DARK = 0x3a3a3e, EDGE = 0xe4e8ec, GRIP = 0x2b2420, BRASS = 0xd4a52a;
+function box(g, w, h, d, c, x = 0, y = 0, z = 0, rx = 0) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); m.rotation.x = rx; g.add(m); return m; }
+function cyl(g, r0, r1, len, c, x = 0, y = 0, z = 0, axis = 'y', seg = 8) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, seg), mat(c));
+  m.position.set(x, y, z); if (axis === 'z') m.rotation.x = Math.PI / 2; if (axis === 'x') m.rotation.z = Math.PI / 2;
+  g.add(m); return m;
+}
+
+export const DEFS = {
+  axe: {
+    name: 'Hatchet', mass: 2.0, price: 0, handle: [-0.06, 0.5],
+    build() { const g = new THREE.Group(); cyl(g, 0.022, 0.018, 0.72, WOOD, 0, 0.27); box(g, 0.026, 0.12, 0.16, STEEL, 0, 0.58, -0.035); box(g, 0.028, 0.125, 0.022, EDGE, 0, 0.58, -0.115); box(g, 0.04, 0.06, 0.05, DARK, 0, 0.58, 0.07); return g; },
+    shapes: [{ a: [0, -0.08, 0], b: [0, 0.62, 0], r: 0.025 }, { a: [0, 0.58, 0.07], b: [0, 0.58, -0.09], r: 0.05 },
+      { a: [0, 0.515, -0.115], b: [0, 0.645, -0.115], r: 0.022, edge: [0, 0, -1], sharp: 1.1 }],
+    ends: [[0, -0.08, 0], [0, 0.62, -0.05]],
+  },
+  slab: {
+    name: 'The Slab', mass: 4.6, price: 900, handle: [-0.06, 0.32], twoHand: true,
+    build() { const g = new THREE.Group(); cyl(g, 0.021, 0.021, 0.42, GRIP, 0, 0.14); box(g, 0.05, 0.045, 0.24, DARK, 0, 0.37); box(g, 0.026, 1.06, 0.12, STEEL, 0, 0.92); box(g, 0.028, 1.06, 0.018, EDGE, 0, 0.92, -0.06); box(g, 0.028, 1.06, 0.018, EDGE, 0, 0.92, 0.06); cyl(g, 0.03, 0.03, 0.04, DARK, 0, -0.08); return g; },
+    shapes: [{ a: [0, -0.08, 0], b: [0, 0.35, 0], r: 0.025 },
+      { a: [0, 0.4, 0], b: [0, 1.45, 0], r: 0.035, edge: [0, 0, -1], double: true, sharp: 1.3 }],
+    ends: [[0, -0.08, 0], [0, 1.45, 0]],
+  },
+  shovel: {
+    name: 'Spade', mass: 2.4, price: 250, handle: [-0.1, 0.88],
+    build() { const g = new THREE.Group(); cyl(g, 0.018, 0.017, 1.05, WOOD, 0, 0.42); box(g, 0.1, 0.03, 0.03, WOOD, 0, -0.1); box(g, 0.22, 0.27, 0.012, 0x8d9399, 0, 1.1); box(g, 0.224, 0.02, 0.014, EDGE, 0, 1.235); box(g, 0.05, 0.08, 0.03, 0x8d9399, 0, 0.95); return g; },
+    shapes: [{ a: [0, -0.1, 0], b: [0, 0.95, 0], r: 0.022 }, { a: [0, 0.98, 0], b: [0, 1.22, 0], r: 0.07 },
+      { a: [-0.1, 1.24, 0], b: [0.1, 1.24, 0], r: 0.016, edge: [0, 1, 0], sharp: 1.0 },
+      { a: [0.11, 0.98, 0], b: [0.11, 1.22, 0], r: 0.014, edge: [1, 0, 0], sharp: 0.8 },
+      { a: [-0.11, 0.98, 0], b: [-0.11, 1.22, 0], r: 0.014, edge: [-1, 0, 0], sharp: 0.8 }],
+    ends: [[0, -0.1, 0], [0, 1.24, 0]],
+  },
+  spear: {
+    name: 'Short Spear', mass: 1.3, price: 150, handle: [-0.55, 0.92], throwable: true,
+    build() { const g = new THREE.Group(); cyl(g, 0.015, 0.014, 1.55, WOOD, 0, 0.22); const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.22, 6), mat(STEEL)); c.position.y = 1.11; g.add(c); box(g, 0.04, 0.03, 0.04, DARK, 0, 0.99); return g; },
+    shapes: [{ a: [0, -0.55, 0], b: [0, 1.0, 0], r: 0.02 },
+      { a: [0, 1.0, 0], b: [0, 1.22, 0], r: 0.022, stab: true, edge: [0, 0, -1], double: true, sharp: 1.3 }],
+    ends: [[0, -0.55, 0], [0, 1.22, 0]],
+  },
+  pistol: {
+    name: 'Service Pistol', mass: 1.0, price: 300, handle: [-0.06, 0.06], mount: 'gun',
+    gun: { dmg: 1, pen: 1.3, force: 3, mag: 12, sound: 'pistol', recoil: 0.5, auto: false, rpm: 600, reload: 1.1 },
+    muzzle: [0, 0.045, -0.165],
+    build() {
+      const g = new THREE.Group();
+      box(g, 0.03, 0.034, 0.2, DARK, 0, 0.047, -0.065); box(g, 0.026, 0.02, 0.18, 0x55585c, 0, 0.022, -0.06);
+      box(g, 0.028, 0.105, 0.044, GRIP, 0, -0.02, 0.012, 0.25); box(g, 0.006, 0.03, 0.03, DARK, 0, 0.0, -0.025);
+      // open magazine: rounds show through a slot in the grip
+      g.userData.rounds = [];
+      for (let i = 0; i < 12; i++) { const r = cyl(g, 0.0045, 0.0045, 0.012, BRASS, 0.0155, 0.02 - i * 0.0072, 0.006 + i * 0.0018, 'z', 6); g.userData.rounds.push(r); }
+      return g;
+    },
+    shapes: [{ a: [0, 0.04, 0.04], b: [0, 0.045, -0.16], r: 0.03 }],
+    ends: [[0, 0, 0.03], [0, 0.045, -0.16]],
+  },
+};
+
+const MOUNT_MELEE = new Q().setFromAxisAngle(new V3(1, 0, 0), -0.95);
+const _v = new V3(), _w = new V3(), _q = new Q(), _q2 = new Q();
+
+export class Weapon {
+  constructor(g, key, pos, quat, mode = 'loose') {
+    this.g = g; this.key = key; this.def = DEFS[key];
+    this.mesh = this.def.build(); g.scene.add(this.mesh);
+    this.mesh.traverse(m => { if (m.isMesh) m.castShadow = true; });
+    this.pos = pos.clone(); this.quat = quat.clone(); this.vel = new V3();
+    this.mode = mode; this.hands = []; this.grabY = [];
+    this.cur = this.def.shapes.map(() => ({ a: new V3(), b: new V3() }));
+    this.prev = this.def.shapes.map(() => ({ a: new V3(), b: new V3() }));
+    this.ammo = this.def.gun ? this.def.gun.mag : 0;
+    this.impaled = []; this.reloadT = 0; this.fireT = 0; this.burst = 0;
+    this.shapesNow(); this.copyPrev();
+    if (mode === 'loose') this.makeLoose(new V3());
+    this.sync();
+  }
+  shapesNow() {
+    const s = this.def.shapes;
+    for (let i = 0; i < s.length; i++) {
+      this.cur[i].a.fromArray(s[i].a).applyQuaternion(this.quat).add(this.pos);
+      this.cur[i].b.fromArray(s[i].b).applyQuaternion(this.quat).add(this.pos);
+    }
+  }
+  copyPrev() { for (let i = 0; i < this.cur.length; i++) { this.prev[i].a.copy(this.cur[i].a); this.prev[i].b.copy(this.cur[i].b); } }
+  worldPoint(local, out) { return out.fromArray(local).applyQuaternion(this.quat).add(this.pos); }
+  edgeW(k, out) { return out.fromArray(this.def.shapes[k].edge).applyQuaternion(this.quat); }
+
+  // ---- held ----
+  grab(hand, yLocal) {
+    if (this.mode === 'loose') this.dropLoose();
+    if (this.hands.length === 0) this.vel.set(0, 0, 0);
+    this.mode = 'held';
+    this.hands.push(hand); this.grabY.push(yLocal);
+    hand.held = this;
+  }
+  release(hand, vel) {
+    const i = this.hands.indexOf(hand); if (i < 0) return;
+    this.hands.splice(i, 1); this.grabY.splice(i, 1);
+    hand.held = null;
+    if (this.hands.length === 0) { this.mode = 'loose'; this.makeLoose(vel || this.vel); }
+  }
+  mountQ(hand) { return this.def.mount === 'gun' ? hand.quat : _q2.copy(hand.quat).multiply(MOUNT_MELEE); }
+  stepHeld(alpha) {
+    const h = this.hands[0], gy = this.grabY[0];
+    const hp = h.lerpPos(alpha, _w);
+    const tq = _q.copy(this.mountQ(h));
+    if (this.hands[1]) {                                      // two hands: aim the handle from hand to hand
+      const h2 = this.hands[1], d = h2.lerpPos(alpha, new V3()).sub(hp);
+      if (d.lengthSq() > 0.004) {
+        d.normalize(); if (this.grabY[1] < gy) d.negate();
+        const cur = new V3(0, 1, 0).applyQuaternion(tq);
+        tq.premultiply(new Q().setFromUnitVectors(cur, d));
+      }
+    }
+    const tp = new V3(0, gy, 0).applyQuaternion(tq).negate().add(hp);
+    const m = this.def.mass * (this.hands[1] ? 0.55 : 1) / (h.power || 1);
+    const w = 34 / Math.sqrt(m);
+    // critically damped spring toward the hand
+    _v.subVectors(tp, this.pos).multiplyScalar(w * w).addScaledVector(this.vel, -2 * w);
+    this.vel.addScaledVector(_v, DT);
+    this.pos.addScaledVector(this.vel, DT);
+    if (this.pos.distanceToSquared(tp) > 0.5) { this.pos.copy(tp); this.vel.set(0, 0, 0); }
+    this.quat.slerp(tq, 1 - Math.exp(-w * 0.9 * DT));
+  }
+  // ---- loose (two particles, roll carried along) ----
+  makeLoose(vel) {
+    const g = this.g, e = this.def.ends;
+    const p0 = this.worldPoint(e[0], new V3()), p1 = this.worldPoint(e[1], new V3());
+    const m = this.def.mass / 2;
+    this.lp = [new Particle(p0, 0.035, m), new Particle(p1, 0.035, m)];
+    const spin = this.spinVel || new V3();
+    this.lp[0].place(p0, vel.clone().addScaledVector(spin, -0.5));
+    this.lp[1].place(p1, vel.clone().addScaledVector(spin, 0.5));
+    for (const p of this.lp) { p.fric = 0.7; p.weapon = this; g.phys.add(p); }
+    this.lstick = g.phys.link(this.lp[0], this.lp[1]);
+    this.axisL = new V3().fromArray(e[1]).sub(new V3().fromArray(e[0])).normalize();
+  }
+  dropLoose() {
+    if (!this.lp) return;
+    for (const p of this.lp) p.gone = true;
+    this.lstick.on = false; this.lp = null;
+  }
+  stepLoose() {
+    const [a, b] = this.lp;
+    const ax = _v.subVectors(b.p, a.p).normalize();
+    const cur = _w.copy(this.axisL).applyQuaternion(this.quat);
+    this.quat.premultiply(_q.setFromUnitVectors(cur, ax)).normalize();
+    this.pos.copy(a.p).sub(new V3().fromArray(this.def.ends[0]).applyQuaternion(this.quat));
+    this.vel.copy(a.vel(new V3())).add(b.vel(new V3())).multiplyScalar(0.5);
+  }
+
+  step(alpha) {
+    this.copyPrev();
+    if (this.mode === 'held') this.stepHeld(alpha);
+    else if (this.mode === 'loose') this.stepLoose();
+    this.shapesNow();
+    // tip velocity drives spin when thrown
+    if (this.mode === 'held') {
+      const n = this.cur.length - 1;
+      this.spinVel = (this.spinVel || new V3()).subVectors(this.cur[n].b, this.prev[n].b).multiplyScalar(1 / DT).sub(this.vel);
+    }
+    for (const im of this.impaled) im.p.pin = this.worldPoint(im.local, im.pin);
+  }
+  sync() {
+    this.mesh.position.copy(this.pos); this.mesh.quaternion.copy(this.quat);
+    const r = this.mesh.userData.rounds;
+    if (r) for (let i = 0; i < r.length; i++) r[i].visible = i < this.ammo;
+  }
+  impale(p) {
+    if (this.impaled.some(i => i.p === p)) return;
+    const local = p.p.clone().sub(this.pos).applyQuaternion(this.quat.clone().invert());
+    this.impaled.push({ p, local: local.toArray(), pin: new V3(), t: this.g.time });
+  }
+  unimpale(i) { const im = this.impaled[i]; im.p.pin = null; im.p.addVel(this.vel); this.impaled.splice(i, 1); }
+  dispose() { this.g.scene.remove(this.mesh); this.dropLoose(); for (let i = this.impaled.length - 1; i >= 0; i--) this.unimpale(i); }
+}
