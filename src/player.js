@@ -1,42 +1,74 @@
 // You: WebXR rig (Quest) or mouse + keyboard. Solid geometric gloves, grabs, throws, kicks, headbutts.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { DT } from './phys.js?v=5';
-import { DEFS, Weapon } from './arsenal.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { DT } from './phys.js?v=6';
+import { DEFS, Weapon } from './arsenal.js?v=6';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const UP = new V3(0, 1, 0);
 const _v = new V3(), _w = new V3(), _q = new Q(), _m = new THREE.Matrix4(), _e = new THREE.Euler();
 
-// smooth grey cartoon hands; fingers curl around whatever you hold
-const HAND_MAT = new THREE.MeshLambertMaterial({ color: 0xb4b8be });
-const SLEEVE_MAT = new THREE.MeshLambertMaterial({ color: 0x8a8e95 });
+// player hands: a solid rounded palm, three-jointed tapering fingers, an opposable thumb, wrist and forearm.
+// Built for the right hand (fingers along -Z, palm facing -X, thumb on top); the left is a mirror.
+const HAND_MAT = new THREE.MeshPhongMaterial({ color: 0xb8bcc2, shininess: 18, specular: 0x222222 });
+const ARM_MAT = new THREE.MeshPhongMaterial({ color: 0x9a9ea5, shininess: 10, specular: 0x111111 });
+function palmGeo() {
+  // a rounded box: sphere pushed out toward a box, wider across the knuckles, thin through the palm
+  const g = new THREE.SphereGeometry(1, 18, 14), p = g.attributes.position, v = new V3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const k = 1 / Math.pow(Math.pow(Math.abs(v.x), 4) + Math.pow(Math.abs(v.y), 4) + Math.pow(Math.abs(v.z), 4), 0.25);
+    v.multiplyScalar(k);
+    v.x *= 0.016; v.y *= 0.041; v.z *= v.z < 0 ? 0.047 : 0.04;
+    if (v.z > 0) v.y *= 1 - 0.25 * (v.z / 0.04);              // narrows toward the wrist
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+const segGeo = (len, r0, r1) => new THREE.CylinderGeometry(r1, r0, len, 10, 1).rotateX(-Math.PI / 2).translate(0, 0, -len / 2);
+const knuckleGeo = new THREE.SphereGeometry(1, 10, 8);
 function gloveMesh(side) {
   const g = new THREE.Group(), s = side === 'left' ? -1 : 1;
   const inner = new THREE.Group(); inner.scale.x = s; g.add(inner);
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), HAND_MAT);
-  palm.scale.set(0.021, 0.04, 0.05); palm.position.set(0, -0.005, 0.0); inner.add(palm);
+  const palm = new THREE.Mesh(palmGeo(), HAND_MAT); inner.add(palm);
+  // fingers: index .. little, each three segments with rounded joints
+  const F = [[0.031, 0.05, 0.031, 0.024, 0.0098], [0.011, 0.054, 0.034, 0.026, 0.0102], [-0.009, 0.052, 0.032, 0.025, 0.0098], [-0.028, 0.042, 0.026, 0.021, 0.0088]];
   const fingers = [];
-  const segGeo = new THREE.CapsuleGeometry(0.0105, 0.026, 3, 8).rotateX(Math.PI / 2).translate(0, 0, -0.018);
-  for (let i = 0; i < 4; i++) {
-    const k1 = new THREE.Group(); k1.position.set(-0.004, 0.03 - i * 0.019, -0.042); inner.add(k1);
-    const p1 = new THREE.Mesh(segGeo, HAND_MAT); k1.add(p1);
-    const k2 = new THREE.Group(); k2.position.z = -0.036; k1.add(k2);
-    const p2 = new THREE.Mesh(segGeo, HAND_MAT); p2.scale.setScalar(0.9); k2.add(p2);
-    fingers.push([k1, k2]);
+  for (const [y, l1, l2, l3, r] of F) {
+    const k1 = new THREE.Group(); k1.position.set(-0.002, y, -0.044); inner.add(k1);
+    const j1 = new THREE.Mesh(knuckleGeo, HAND_MAT); j1.scale.setScalar(r * 1.05); k1.add(j1);
+    k1.add(new THREE.Mesh(segGeo(l1, r, r * 0.95), HAND_MAT));
+    const k2 = new THREE.Group(); k2.position.z = -l1; k1.add(k2);
+    const j2 = new THREE.Mesh(knuckleGeo, HAND_MAT); j2.scale.setScalar(r * 0.96); k2.add(j2);
+    k2.add(new THREE.Mesh(segGeo(l2, r * 0.95, r * 0.88), HAND_MAT));
+    const k3 = new THREE.Group(); k3.position.z = -l2; k2.add(k3);
+    const j3 = new THREE.Mesh(knuckleGeo, HAND_MAT); j3.scale.setScalar(r * 0.9); k3.add(j3);
+    k3.add(new THREE.Mesh(segGeo(l3, r * 0.88, r * 0.8), HAND_MAT));
+    const tip = new THREE.Mesh(knuckleGeo, HAND_MAT); tip.scale.setScalar(r * 0.8); tip.position.z = -l3; k3.add(tip);
+    fingers.push([k1, k2, k3]);
   }
-  const tb = new THREE.Group(); tb.position.set(-0.016, 0.035, -0.01); tb.rotation.set(0.4, 0.5, 0); inner.add(tb);
-  const t1 = new THREE.Mesh(segGeo, HAND_MAT); t1.scale.set(1.1, 1.1, 1.1); tb.add(t1);
-  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.034, 0.16, 10).rotateX(Math.PI / 2), SLEEVE_MAT);
-  sleeve.position.set(0, -0.005, 0.1); inner.add(sleeve);
-  const knuck = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.085, 0.02), new THREE.MeshLambertMaterial({ color: 0xd8b23a }));
-  knuck.position.set(0.012, -0.0, -0.05); knuck.visible = false; inner.add(knuck);
-  g.userData = { fingers, thumb: tb, knuck };
+  // thumb: from the heel of the palm, angled up and forward, two segments
+  const tb = new THREE.Group(); tb.position.set(-0.006, 0.036, -0.004); tb.rotation.set(0.0, 0.25, 0.75); inner.add(tb);
+  const tbase = new THREE.Mesh(knuckleGeo, HAND_MAT); tbase.scale.set(0.014, 0.014, 0.018); tb.add(tbase);
+  tb.add(new THREE.Mesh(segGeo(0.036, 0.013, 0.012), HAND_MAT));
+  const t2 = new THREE.Group(); t2.position.z = -0.036; tb.add(t2);
+  const tj = new THREE.Mesh(knuckleGeo, HAND_MAT); tj.scale.setScalar(0.012); t2.add(tj);
+  t2.add(new THREE.Mesh(segGeo(0.03, 0.012, 0.0105), HAND_MAT));
+  const ttip = new THREE.Mesh(knuckleGeo, HAND_MAT); ttip.scale.setScalar(0.0105); ttip.position.z = -0.03; t2.add(ttip);
+  // wrist and forearm
+  const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.028, 0.05, 14).rotateX(Math.PI / 2), HAND_MAT); wrist.position.set(0, -0.002, 0.055); wrist.scale.x = 0.7; inner.add(wrist);
+  const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.036, 0.2, 14).rotateX(Math.PI / 2), ARM_MAT); fore.position.set(0, -0.003, 0.18); fore.scale.x = 0.85; inner.add(fore);
+  // hydraulic knuckles (upgrade): a brass bar across the knuckles
+  const knuck = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.092, 0.018), new THREE.MeshPhongMaterial({ color: 0xd8b23a, shininess: 80 }));
+  knuck.position.set(0.012, 0.004, -0.05); knuck.visible = false; inner.add(knuck);
+  g.userData = { fingers, thumb: tb, thumb2: t2, knuck };
   g.traverse(m => { if (m.isMesh) m.castShadow = true; });
   return g;
 }
 function curlHand(glove, k) {
-  const { fingers, thumb } = glove.userData;
-  for (const [a, b] of fingers) { a.rotation.y = k * 1.45; b.rotation.y = k * 1.6; }
-  thumb.rotation.y = 0.5 + k * 0.7;
+  const { fingers, thumb, thumb2 } = glove.userData;
+  // curl toward the palm (rotation about +Y swings -Z fingers toward -X); little finger curls a touch more
+  fingers.forEach(([a, b, c], i) => { const e = 1 + i * 0.05; a.rotation.y = k * 1.35 * e + 0.08; b.rotation.y = k * 1.55 * e + 0.12; c.rotation.y = k * 1.05 * e + 0.1; });
+  thumb.rotation.y = 0.25 + k * 0.55; thumb2.rotation.y = 0.15 + k * 0.7;
 }
 
 class Hand {
@@ -245,7 +277,7 @@ export class Player {
     this.cam.getWorldPosition(this.head);
     for (const h of this.H) {
       h.vel.subVectors(h.pos, h.p0).multiplyScalar(1 / Math.max(dt, 1e-3));
-      h.power = (g.upgrades.punch || 1);
+      h.power = (g.upgrades.punch || 1) * (this.grabbedBy && this.grabbedBy.grabbing && this.grabbedBy.grabbing.hand === h ? 0.3 : 1);
       h.st.mass = 1.4 * h.power; h.st.dmgMul = g.upgrades.dusters ? 1.6 : 1;
       h.glove.userData.knuck.visible = !!g.upgrades.dusters;
       curlHand(h.glove, h.held || h.grabP || h.btn.grip ? 1 : (this.punch && this.punch.h === h) || !this.vr ? 0.9 : h.btn.trig ? 0.6 : 0.15);
@@ -288,7 +320,7 @@ export class Player {
 
   updateDesk(dt) {
     const k = this.keys;
-    const sp = (k.ShiftLeft ? 5 : 3.2) * dt;
+    const sp = (k.ShiftLeft ? 5 : 3.2) * dt * (this.grabbedBy ? 0.35 : 1);
     let fx = 0, fz = 0;
     if (k.KeyW) fz -= 1; if (k.KeyS) fz += 1; if (k.KeyA) fx -= 1; if (k.KeyD) fx += 1;
     const l = Math.hypot(fx, fz) || 1; fx /= l; fz /= l;
@@ -336,7 +368,8 @@ export class Player {
     }
     h.pos.copy(lp).applyQuaternion(camQ).add(this.cam.getWorldPosition(_w));
     if (w && w.def.mount === 'gun') {
-      const aim = this.cam.getWorldPosition(new V3()).addScaledVector(this.lookDir(new V3()), 18);
+      const eye = this.cam.getWorldPosition(new V3()), look = this.lookDir(new V3());
+      const aim = eye.clone().addScaledVector(look, this.g.aimDistance(eye, look));
       _m.lookAt(h.pos, aim, UP); h.quat.setFromRotationMatrix(_m);
     } else {
       h.quat.copy(camQ).multiply(_q.setFromEuler(_e.set(e.x, e.y, e.z, 'YXZ')));
@@ -368,7 +401,7 @@ export class Player {
     if (fwd.lengthSq() < 1e-4) fwd.set(0, 1, 0).applyQuaternion(headQ).setY(0).negate();   // looking straight down
     fwd.normalize();
     const right = new V3().crossVectors(fwd, UP);
-    const sp = (L.btn.stick ? 4.2 : 2.6) * dt;
+    const sp = (L.btn.stick ? 4.2 : 2.6) * dt * (this.grabbedBy ? 0.35 : 1);
     const mvx = (right.x * ax[0] - fwd.x * ax[1]) * sp, mvz = (right.z * ax[0] - fwd.z * ax[1]) * sp;
     this.cam.getWorldPosition(this.head);
     this.move(Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15 ? mvx : 0, Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15 ? mvz : 0, dt);
@@ -402,7 +435,8 @@ export class Player {
           if (h.grabP) this.releaseGrab(h, h.vel.clone().multiplyScalar(1.3));
         }
         if (h.held && h.held.def.gun && h.pressed('b')) g.reload(h.held);
-        if (h.held && h.held.def.gun && h.pressed('stick')) g.cycleFire(h.held);
+        if (h.held && h.held.def.gun && h.pressed('stick')) { h.stickT = 0; g.cycleFire(h.held); }
+        if (h.held && h.held.def.gun && h.held.def.gun.spawner && h.btn.stick) { h.stickT = (h.stickT || 0) + dt; if (h.stickT > 1 && !h.cleared) { h.cleared = true; g.spawnClear(); } } else h.cleared = false;
       }
     }
     for (const h of this.H) {

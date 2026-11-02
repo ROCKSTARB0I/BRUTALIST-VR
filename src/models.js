@@ -1,7 +1,7 @@
 // Weapon models built from real side profiles (cut out and extruded, bevelled edges), with real parts:
 // receivers, trigger guards, sights, fullers, tapered blade edges, open magazines showing the rounds.
 // Same local frames as arsenal.js: melee handle along +Y with the edge facing -Z; guns barrel along -Z.
-import * as THREE from '../vendor/three.module.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
 const V3 = THREE.Vector3;
 
 const MC = {};
@@ -204,6 +204,88 @@ export const MODELS = {
     g.userData.chain = chain.children[0];
     add(g, tube(0.006, 0.006, 0.05, RUBBER(), 'x', 0.06, 0.05, 0.12, 6), new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), RUBBER()));
     g.children[g.children.length - 1].position.set(0.088, 0.05, 0.12);
+    return g;
+  },
+  vaxe() {
+    const g = new THREE.Group();
+    add(g, prof([[0.017, -0.11], [0.022, -0.08], [0.018, 0.4], [0.02, 1.0], [-0.02, 1.0], [-0.018, 0.4], [-0.022, -0.08], [-0.017, -0.11]], 0.026, WOOD(), { bevel: 0.007 }));
+    for (const y of [-0.04, 0.0, 0.04]) add(g, ring(0.0205, 0.003, LEATHER(), 'y', 0, y, 0));
+    // long-bearded head: the bit sweeps down well below the eye
+    const head = [[-0.185, 1.075], [-0.14, 1.06], [-0.06, 0.975], [-0.022, 0.968], [0.04, 0.97], [0.065, 0.958], [0.065, 0.9], [0.04, 0.89], [-0.022, 0.895], [-0.05, 0.86], [-0.1, 0.8], [-0.15, 0.775], [-0.19, 0.79], [-0.196, 0.9], [-0.194, 1.02]];
+    add(g, prof(head, 0.03, DARKSTEEL(), { bevel: 0.003, taper: (z) => 1 - 0.8 * Math.min(1, Math.max(0, (z + 0.03) / -0.15)) }));
+    add(g, prof([[-0.15, 0.778], [-0.19, 0.79], [-0.196, 0.9], [-0.194, 1.02], [-0.185, 1.075], [-0.172, 1.066], [-0.18, 0.9], [-0.176, 0.8]], 0.009, EDGE(), { bevel: 0.001 }));
+    return g;
+  },
+  zwei() {
+    const g = new THREE.Group();
+    add(g, prof([[-0.025, 0.69], [0.025, 0.69], [0.026, 1.6], [0.0, 1.745], [-0.026, 1.6]], 0.013, STEEL(), { bevel: 0.0015, taper: (z) => 1 - 0.75 * Math.min(1, Math.abs(z) / 0.026) }));
+    add(g, prof([[-0.006, 0.72], [0.006, 0.72], [0.006, 1.4], [-0.006, 1.4]], 0.0145, DARKSTEEL(), { bevel: 0.001 }));
+    add(g, prof([[-0.018, 0.47], [0.018, 0.47], [0.018, 0.69], [-0.018, 0.69]], 0.014, DARKSTEEL()));                                        // ricasso
+    add(g, prof([[-0.06, 0.58], [-0.04, 0.6], [0.04, 0.6], [0.06, 0.58], [0.04, 0.565], [-0.04, 0.565]], 0.02, BLUED()));                     // parrying hooks
+    add(g, prof([[-0.17, 0.455], [-0.16, 0.475], [0.16, 0.475], [0.17, 0.455], [0.16, 0.44], [-0.16, 0.44]], 0.032, BLUED(), { bevel: 0.006 }));
+    add(g, tube(0.021, 0.019, 0.56, LEATHER(), 'y', 0, 0.16));
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.032, 12, 8), BLUED()); p.position.y = -0.15; g.add(p);
+    return g;
+  },
+  scimitar() {
+    const g = new THREE.Group();
+    // a curved, widening blade
+    const pts = []; for (let i = 0; i <= 10; i++) { const u = i / 10, y = 0.15 + u * 0.68, z = -0.1 * u * u; pts.push([z - 0.012 - 0.022 * Math.sin(u * 2.6), y]); }
+    const back = []; for (let i = 10; i >= 0; i--) { const u = i / 10, y = 0.15 + u * 0.68, z = -0.1 * u * u; back.push([z + 0.012 - (u > 0.85 ? (u - 0.85) * 0.2 : 0), y]); }
+    add(g, prof([...pts, ...back], 0.008, STEEL(), { bevel: 0.0012 }));
+    add(g, prof([[-0.06, 0.13], [-0.05, 0.145], [0.05, 0.145], [0.06, 0.13], [0.05, 0.12], [-0.05, 0.12]], 0.02, GOLDD()));
+    add(g, tube(0.017, 0.016, 0.17, LEATHER(), 'y', 0, 0.03));
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), GOLDD()); p.position.y = -0.06; g.add(p);
+    return g;
+  },
+  naginata() {
+    const g = new THREE.Group();
+    add(g, tube(0.019, 0.018, 1.96, M(0x2a1a12, 12), 'y', 0, 0.03));
+    for (const y of [0.92, 0.95, 0.98]) add(g, ring(0.0195, 0.003, GOLDD(), 'y', 0, y, 0));
+    add(g, tube(0.02, 0.017, 0.06, GOLDD(), 'y', 0, -0.94));
+    const pts = []; for (let i = 0; i <= 10; i++) { const u = i / 10; pts.push([-0.012 - 0.035 * Math.sin(u * 2.4) - 0.04 * u * u, 1.0 + u * 0.52]); }
+    const back = []; for (let i = 10; i >= 0; i--) { const u = i / 10; back.push([0.012 - 0.06 * u * u, 1.0 + u * 0.52]); }
+    add(g, prof([...pts, ...back], 0.008, STEEL(), { bevel: 0.0012 }));
+    return g;
+  },
+  mace() {
+    const g = new THREE.Group();
+    add(g, tube(0.018, 0.016, 0.56, DARKSTEEL(), 'y', 0, 0.19));
+    for (let y = -0.06; y < 0.12; y += 0.03) add(g, ring(0.0185, 0.003, LEATHER(), 'y', 0, y, 0));
+    add(g, tube(0.03, 0.03, 0.2, BLUED(), 'y', 0, 0.56, 0, 10));
+    for (let i = 0; i < 7; i++) {                                // flanges round the head
+      const a = i / 7 * Math.PI * 2, f = prof([[0.0, 0.46], [0.04, 0.5], [0.05, 0.58], [0.035, 0.66], [0.0, 0.68]], 0.008, DARKSTEEL());
+      f.rotation.y = a; g.add(f);
+    }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 8), BLUED()); tip.position.y = 0.69; g.add(tip);
+    return g;
+  },
+  pitchfork() {
+    const g = new THREE.Group();
+    add(g, tube(0.017, 0.016, 1.58, WOODL(), 'y', 0, 0.14));
+    add(g, tube(0.02, 0.024, 0.06, DARKSTEEL(), 'y', 0, 0.91));
+    add(g, boxm(0.13, 0.016, 0.016, DARKSTEEL(), 0, 0.945, 0));
+    for (const x of [-0.055, 0, 0.055]) { add(g, tube(0.006, 0.0025, 0.29, DARKSTEEL(), 'y', x, 1.09, 0, 6)); }
+    return g;
+  },
+  autocannon() {
+    const g = new THREE.Group();
+    add(g, tube(0.05, 0.05, 0.4, BLUED(), 'z', 0, 0.05, -0.05, 16), tube(0.036, 0.04, 0.55, DARKSTEEL(), 'z', 0, 0.05, -0.55, 14));
+    add(g, tube(0.048, 0.048, 0.1, BLUED(), 'z', 0, 0.05, -0.82, 14));
+    for (let z = -0.35; z > -0.75; z -= 0.08) add(g, ring(0.04, 0.006, POLY(), 'z', 0, 0.05, z));
+    add(g, prof([[0.15, 0.1], [0.32, 0.08], [0.33, -0.02], [0.3, -0.03], [0.15, 0.0]], 0.05, POLY(), { bevel: 0.008 }));
+    add(g, prof([[0.06, 0.0], [0.09, -0.11], [0.065, -0.115], [0.035, -0.005]], 0.032, POLY(), { bevel: 0.005 }));
+    add(g, prof([[-0.2, 0.0], [-0.22, -0.1], [-0.25, -0.1], [-0.24, 0.0]], 0.03, POLY()));
+    const drum = tube(0.07, 0.07, 0.06, OLIVE(), 'x', 0.09, -0.01, 0.0, 16); g.add(drum);
+    rounds(g, Array.from({ length: 8 }, (_, i) => { const a = i / 8 * Math.PI * 2; return [0.125, -0.01 + Math.sin(a) * 0.045, Math.cos(a) * 0.045]; }), 0.012, 0.012, M(0x2b2b2e, 60), 'x');
+    return g;
+  },
+  spawner() {
+    const g = new THREE.Group();
+    add(g, prof([[0.04, 0.035], [0.04, 0.085], [-0.18, 0.085], [-0.22, 0.07], [-0.22, 0.04], [-0.05, 0.03]], 0.04, M(0xd9dde2, 40), { bevel: 0.008 }));
+    add(g, prof([[0.03, 0.035], [0.055, -0.08], [0.03, -0.085], [0.005, 0.03]], 0.03, POLY(), { bevel: 0.005 }));
+    for (const z of [-0.2, -0.235]) add(g, ring(0.03, 0.006, M(0x37c8ff, 60), 'z', 0, 0.06, z));
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshBasicMaterial({ color: 0x37c8ff })); lamp.position.set(0, 0.095, -0.05); g.add(lamp);
     return g;
   },
 };

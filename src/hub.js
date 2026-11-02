@@ -1,8 +1,8 @@
 // The hub: a tiled market hall under a glass roof. Vendor stalls sell weapons and upgrades,
 // a jobs board starts paid missions, and the tailor sells armour. Career progress is saved locally.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { DEFS } from './arsenal.js?v=5';
-import { Body, OUTFITS } from './body.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { DEFS } from './arsenal.js?v=6';
+import { Body, OUTFITS } from './body.js?v=6';
 const V3 = THREE.Vector3;
 
 const SAVE_KEY = 'brutalist_career';
@@ -23,9 +23,9 @@ export function applyUpgrades(g, c) {
 }
 
 export const SHOP = [
-  { vendor: "RUSTY PETE'S CUTLERY", sign: '#7a1f17', ink: '#ffd88a', font: 'Bangers', items: ['axe', 'shovel', 'spear', 'slab'] },
+  { vendor: "RUSTY PETE'S CUTLERY", sign: '#7a1f17', ink: '#ffd88a', font: 'Bangers', items: ['axe', 'shovel', 'spear', 'pitchfork', 'scimitar', 'mace', 'slab', 'vaxe', 'zwei', 'naginata'] },
   { vendor: "BARNEY'S BOOMSTICKS", sign: '#22303f', ink: '#f2f2f2', font: 'Black Ops One', items: ['pistol', 'm16', 'bolt', 'cannon'] },
-  { vendor: "DR. KESSLER'S HEAVY HARDWARE", sign: '#1e4752', ink: '#5ff0e0', font: 'Bangers', items: ['chainsaw', 'nailer', 'minigun', 'mallet'] },
+  { vendor: "DR. KESSLER'S HEAVY HARDWARE", sign: '#1e4752', ink: '#5ff0e0', font: 'Bangers', items: ['chainsaw', 'nailer', 'minigun', 'autocannon', 'mallet'] },
   { vendor: "IRON IVAN'S GYM", sign: '#e2c64a', ink: '#8a1010', font: 'Bangers', upgrades: ['hp', 'punch', 'reward', 'lifesteal'] },
 ];
 export const UPGRADES = {
@@ -124,37 +124,55 @@ export function buildHub(w) {
     // vendor behind the counter (eyes follow you)
     const vb = new Body(g, new V3(cx, 0, cz - 1.0), 0, { outfit: OUTFITS[(si * 3 + 1) % OUTFITS.length] });
     vb.static = true; vb.state = 'idle'; w.vendors.push(vb);
-    // wares
-    const list = shop.items || shop.upgrades;
-    list.forEach((key, i) => {
-      const ix = cx + (i - (list.length - 1) / 2) * (stallW / list.length);
-      // display on the back wall: oval frame + the weapon itself + its name
+    // wares: four positions per stall; stalls with more stock page through it with arrows
+    const list = shop.items || shop.upgrades, PER = 4;
+    const stall = { list, page: 0, pos: [] };
+    for (let i = 0; i < PER; i++) {
+      const ix = cx + (i - (PER - 1) / 2) * (stallW / PER);
       const frame = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.025, 6, 30), new THREE.MeshLambertMaterial({ color: '#efe6d6' }));
       frame.scale.set(0.95, 1.75, 1); frame.position.set(ix, 2.1, -Z + 0.05); w.group.add(frame);
-      const label = canvasPlane(1.4, 0.32, 512);
-      const lc = label.userData.ctx; lc.fillStyle = '#f4f4f0'; lc.textAlign = 'center'; lc.textBaseline = 'middle';
-      const name = shop.items ? DEFS[key].name : UPGRADES[key].name;
-      fitText(lc, name, 490, 64, "'Roboto Mono', monospace"); lc.font = lc.font.replace(/^\d+px/, m => m) ; lc.fillText(name, 256, 60);
-      label.position.set(ix, 3.0, -Z + 0.05); w.group.add(label);
-      if (shop.items) {
-        // a real weapon hangs on the stand: grab it to try it (buying is the price card)
-        const q = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), Math.PI / 2);
-        w.slots.push({ key, pos: new V3(ix, 2.1, -Z + 0.22), quat: q, trial: true, t: 0, w: null });
-      } else {
-        const icon = canvasPlane(0.6, 0.6, 256), ic = icon.userData.ctx;
-        ic.fillStyle = '#e2c64a'; ic.beginPath(); ic.arc(128, 128, 110, 0, 7); ic.fill();
-        ic.fillStyle = '#8a1010'; ic.font = "bold 120px 'Bangers', sans-serif"; ic.textAlign = 'center'; ic.textBaseline = 'middle';
-        ic.fillText({ hp: '+', punch: '✊', reward: '$', lifesteal: '♥' }[key], 128, 138);
-        icon.position.set(ix, 2.05, -Z + 0.08); w.group.add(icon);
-      }
-      // price card on the counter
-      const card = canvasPlane(0.62, 0.3, 512);
-      card.position.set(ix, 1.2, cz + 0.32); card.rotation.x = -0.6; w.group.add(card);
-      const btn = { obj: card, r: 0.24, kind: shop.items ? 'weapon' : 'upgrade', key };
-      btn.refresh = () => drawCard(g, btn);
-      btn.press = () => g.shopPress(btn);
-      w.buttons.push(btn); btn.refresh();
-    });
+      const label = canvasPlane(1.4, 0.32, 512); label.position.set(ix, 3.0, -Z + 0.05); w.group.add(label);
+      const icon = canvasPlane(0.6, 0.6, 256); icon.position.set(ix, 2.05, -Z + 0.08); w.group.add(icon);
+      const card = canvasPlane(0.62, 0.3, 512); card.position.set(ix, 1.2, cz + 0.32); card.rotation.x = -0.6; w.group.add(card);
+      const btn = { obj: card, r: 0.24, kind: shop.items ? 'weapon' : 'upgrade', key: null };
+      btn.refresh = () => { if (btn.key) drawCard(g, btn); else { card.userData.ctx.clearRect(0, 0, 512, 512); card.userData.tex.needsUpdate = true; } };
+      btn.press = () => { if (btn.key) g.shopPress(btn); };
+      w.buttons.push(btn);
+      stall.pos.push({ ix, label, icon, btn, frame });
+    }
+    const fill = () => {
+      for (const sl of w.slots.filter(sl => sl.stall === stall)) if (sl.w && sl.w.mode === 'rack') g.removeWeapon(sl.w);
+      w.slots = w.slots.filter(sl => sl.stall !== stall);
+      stall.pos.forEach((P, i) => {
+        const key = list[stall.page * PER + i] || null;
+        P.btn.key = key; P.btn.refresh(); P.frame.visible = !!key;
+        const lc = P.label.userData.ctx; lc.clearRect(0, 0, 512, 160);
+        if (key) { const name = shop.items ? DEFS[key].name : UPGRADES[key].name; lc.fillStyle = '#f4f4f0'; lc.textAlign = 'center'; lc.textBaseline = 'middle'; fitText(lc, name, 490, 64, "'Roboto Mono', monospace"); lc.fillText(name, 256, 60); }
+        P.label.userData.tex.needsUpdate = true;
+        const ic = P.icon.userData.ctx; ic.clearRect(0, 0, 256, 256);
+        if (key && !shop.items) {
+          ic.fillStyle = '#e2c64a'; ic.beginPath(); ic.arc(128, 128, 110, 0, 7); ic.fill();
+          ic.fillStyle = '#8a1010'; ic.font = "bold 120px 'Bangers', sans-serif"; ic.textAlign = 'center'; ic.textBaseline = 'middle';
+          ic.fillText({ hp: '+', punch: 'P', reward: '$', lifesteal: 'L' }[key], 128, 138);
+        }
+        P.icon.userData.tex.needsUpdate = true;
+        if (key && shop.items) {
+          // a real weapon hangs on the stand: grab it to try it (buying is the price card)
+          const q = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), DEFS[key].wide ? 0 : Math.PI / 2);
+          const sl = { key, pos: new V3(P.ix, 2.1, -Z + 0.22), quat: q, trial: true, t: 0, w: null, stall };
+          w.slots.push(sl); if (g.placeSlot) g.placeSlot(sl);
+        }
+      });
+    };
+    stall.fill = fill;
+    if (list.length > PER) for (const sx of [-1, 1]) {
+      const arrow = canvasPlane(0.32, 0.32, 256); arrow.position.set(cx + sx * (stallW / 2 + 0.05), 2.1, -Z + 0.08); w.group.add(arrow);
+      const ac = arrow.userData.ctx; ac.fillStyle = '#f2f2f2'; ac.strokeStyle = '#111'; ac.lineWidth = 10; ac.beginPath();
+      if (sx > 0) { ac.moveTo(70, 40); ac.lineTo(200, 128); ac.lineTo(70, 216); } else { ac.moveTo(186, 40); ac.lineTo(56, 128); ac.lineTo(186, 216); }
+      ac.closePath(); ac.fill(); ac.stroke(); arrow.userData.tex.needsUpdate = true;
+      w.buttons.push({ obj: arrow, r: 0.25, kind: 'page', press: () => { const pages = Math.ceil(list.length / PER); stall.page = (stall.page + sx + pages) % pages; fill(); g.sfx.play('click', null, 0.5); }, refresh() {} });
+    }
+    (w.stalls = w.stalls || []).push(stall);
     // current funds sign on the counter front
     const funds = canvasPlane(1.1, 0.42, 512);
     funds.position.set(cx, 0.62, cz + 0.36); w.group.add(funds);

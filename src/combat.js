@@ -1,8 +1,8 @@
 // Contacts between weapons / fists / feet and stickman bones, and hitscan bullets.
 // Sharp edges cut when the edge moves fast enough across the bone (or keeps sawing); everything else is blunt.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { DT, segSeg, rayCapsule } from './phys.js?v=5';
-import { J, ZONE } from './body.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { DT, segSeg, rayCapsule } from './phys.js?v=6';
+import { J, ZONE } from './body.js?v=6';
 const V3 = THREE.Vector3;
 const res = { s: 0, t: 0, d2: 0, c1: new V3(), c2: new V3() };
 const _vw = new V3(), _vb = new V3(), _vr = new V3(), _n = new V3(), _e = new V3(), _ax = new V3(), _t = new V3(), _u = new V3();
@@ -49,17 +49,14 @@ export function strikerContacts(g, st) {
     if (body.center().distanceToSquared(st.pos) > 4) continue;
     for (const bone of body.bones.slice()) {
       if (bone.gone || bone.cool > g.time) continue;
-      // closest point on bone to sphere
-      _t.subVectors(bone.b.p, bone.a.p);
-      const L2 = _t.lengthSq();
-      const t = Math.max(0, Math.min(1, _u.subVectors(st.pos, bone.a.p).dot(_t) / L2));
-      const cp = _e.copy(bone.a.p).addScaledVector(_t, t);
-      const d = cp.distanceTo(st.pos), rr = bone.r + st.r;
+      // closest approach between the striker's path this step and the bone (fast things can't skip through)
+      segSeg(st.prev, st.pos, bone.a.p, bone.b.p, res);
+      const t = res.t, cp = _e.copy(res.c2), d = Math.sqrt(res.d2), rr = bone.r + st.r;
       if (d > rr) continue;
       _vw.subVectors(st.pos, st.prev).multiplyScalar(1 / DT);
       boneVel(bone, t, _vb);
       _vr.subVectors(_vw, _vb);
-      _n.subVectors(cp, st.pos).divideScalar(d || 1);
+      _n.subVectors(cp, res.c1); if (d > 1e-4) _n.divideScalar(d); else _n.copy(_vr).normalize();
       strike(g, { st, mass: st.mass, pt: cp.clone() }, bone, t, _n, _vr, rr - d);
     }
   }
@@ -117,6 +114,9 @@ function strike(g, src, bone, t, n, vrel, pen) {
         const pn = new V3().crossVectors(src.axis, vrel).normalize();
         const bax = _t.subVectors(bone.b.p, bone.a.p).normalize();
         bone.saw = 0;
+        if (Math.abs(pn.dot(bax)) < 0.42 && (bone.kind === 'head' || bone.kind === 'neck' || bone.kind === 'torso') && Math.abs(bax.y) > 0.6 && vrel.y < -1.2 && es > thr * 1.5) {
+          if (body.bisect(pn, es > thr * 2.3)) { if (w.mode === 'held') w.vel.multiplyScalar(0.6); g.onHit(body, 'split'); return 'cut'; }
+        }
         if (Math.abs(pn.dot(bax)) < 0.42) {                  // plane runs along the bone
           if (bone.kind === 'head' && bone.b === body.P[J.CROWN] && body.splitHead(pn)) {
             g.onSplit(body, pt);
@@ -162,7 +162,13 @@ function strike(g, src, bone, t, n, vrel, pen) {
   bone.cool = g.time + 0.1;
   if (E < 2) return 'tap';
   if (src.w && src.w.def.homerun && E > 3) { g.homerun(body, n, pt); return 'homerun'; }
-  const dmg = E * (ZONE[bone.kind] || 1) * 0.9 * (src.st ? src.st.dmgMul || 1 : 1);
+  const dmg = E * (ZONE[bone.kind] || 1) * 0.9 * (src.st ? src.st.dmgMul || 1 : 1) * (src.w && src.w.def.bluntMul || 1);
+  if (src.w && src.w.def.bluntMul) { bone.a.addVel(n, dv * 0.5); bone.b.addVel(n, dv * 0.5); }
+  if (src.st && src.st.kind === 'ball' && E > 60) {
+    if (bone.kind === 'arm' || bone.kind === 'leg' || bone.kind === 'neck' || (bone.kind === 'torso' && E > 140)) {
+      if (body.cut(bone, t, new V3().crossVectors(n, _t.subVectors(bone.b.p, bone.a.p)).cross(_t).normalize())) { g.gore.splash(pt, n, 12, 3); body.hurt(80, 1); return 'cut'; }
+    }
+  }
   const isHead = bone.kind === 'head' && bone.b === body.P[J.CROWN];
   g.sfx.play(src.st && src.st.kind === 'fist' && E < 25 ? 'punch' : 'blunt', pt, Math.min(1.2, 0.3 + E / 30), isHead ? 0.9 : 1);
   if (E > 10) { bone.paint(pt, 0.05 + E * 0.002, Math.min(1, E / 40)); g.gore.burst(pt, Math.min(18, E / 3) | 0, 1.5, 0.6); }

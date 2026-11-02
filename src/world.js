@@ -1,5 +1,5 @@
 // Levels are boxes (physics) dressed with procedural canvas textures (concrete, brick, sand) that blood paints into.
-import * as THREE from '../vendor/three.module.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
 const V3 = THREE.Vector3;
 
 // ---------- procedural surface bases (drawn into the same canvases blood paints on) ----------

@@ -1,9 +1,9 @@
 // Stickmen: 17 particles, capsule bones between them, hidden struts that hold the torso together.
 // Alive = particles are pulled toward an animated pose (muscles). Dead = pure ragdoll.
 // Any bone can be cut anywhere along its length; the struts that cross the cut plane snap with it.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { Particle, DT } from './phys.js?v=5';
-import { MODELS } from './models.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { Particle, DT } from './phys.js?v=6';
+import { MODELS } from './models.js?v=6';
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
 
@@ -95,11 +95,17 @@ class Bone {
     this.stick = body.g.phys.link(a, b, this.len);
     body.sticks.push(this.stick);
     this.isHead = kind === 'head';
+    this.half = !!o.half;
     const geo = this.isHead && this.capA === 'round' && this.capB === 'round' && !o.len
       ? whiteColors(craniumGeo(r).translate(0, this.len / 2, 0))
-      : limbGeo(this.len, r, this.capA, this.capB, this.isHead ? 14 : 8, Math.PI * 2, this.base);
+      : limbGeo(this.len, r, this.capA, this.capB, this.isHead ? 14 : 8, this.half ? Math.PI : Math.PI * 2, this.base);
     this.mesh = new THREE.Mesh(geo, this.isHead ? body.headMat : body.mat);
     this.mesh.castShadow = true;
+    if (this.half) {                                   // the cut face of a body split down the middle: flesh with bone up the centre
+      const sh = new THREE.Shape(); sh.absarc(0, this.len, r, 0, Math.PI, false); sh.absarc(0, 0, r, Math.PI, Math.PI * 2, false);
+      const face = new THREE.Mesh(new THREE.ShapeGeometry(sh, 8).rotateY(-Math.PI / 2), HALF_FLESH); this.mesh.add(face);
+      const bone = new THREE.Mesh(new THREE.PlaneGeometry(r * 0.35, this.len + r).rotateY(-Math.PI / 2).translate(-0.001, this.len / 2, r * 0.45), HALF_BONE); this.mesh.add(bone);
+    }
     this.dir = _v.subVectors(b.p, a.p).normalize().clone();
     if (o.q) this.mesh.quaternion.copy(o.q); else this.mesh.quaternion.setFromUnitVectors(UP, this.dir);
     body.group.add(this.mesh);
@@ -116,7 +122,7 @@ class Bone {
     if (L < 1e-5) return;
     d.divideScalar(L);
     const P = this.body.P;
-    if ((this.isHead || this.kind === 'torso') && !P[LS].gone && P[LS].cc === this.a.cc && P[RS].cc === this.a.cc) {
+    if ((this.isHead || this.kind === 'torso') && !this.half && !P[LS].gone && P[LS].cc === this.a.cc && P[RS].cc === this.a.cc) {
       const side = _w.subVectors(P[LS].p, P[RS].p);
       const fwd = _u.crossVectors(side, d).normalize();            // body forward
       const z = fwd.negate(), x = side.crossVectors(d, z).normalize();
@@ -248,9 +254,10 @@ export class Body {
     if (this.hp <= 0) this.kill('beaten');
     else if (stun > 0.8 && this.state !== 'crawl') this.fall(1 + Math.random());
   }
-  fall(t) { if (!this.alive) return; this.state = 'down'; this.downT = t; }
+  fall(t) { if (!this.alive) return; this.letGo(); this.state = 'down'; this.downT = t; }
   kill(how) {
     if (!this.alive) return;
+    this.letGo();
     this.alive = false; this.state = 'dead'; this.deadT = 0; this.reanimAt = 2.5 + Math.random() * 2;
     if (!this.headGone && how !== 'head' && how !== 'bled') this.g.sfx.play('gurgle', this.P[NECK].p, 0.7);
     if (this.gun) this.g.dropGun(this);
@@ -431,6 +438,13 @@ export class Body {
           if (dist < 0.9 && Math.abs(head.y - (R.y + 1.6)) < 1.2) { this.state = 'attack'; this.atkT = 0; this.hitDone = false; }
         } else {
           this.moveAmt *= 1 - Math.min(1, dt * 6);
+          const PL = g.player;
+          if (this.grabbing) { this.holdOn(dt, core); break; }
+          if (this.atkT < dt * 1.5 && !this.gun && !PL.grabbedBy && dist < 0.85 && Math.random() < (this.zombie ? 0.5 : 0.3) && P[LH].cc === core) {
+            const hands = PL.H.filter(h => !PL.vr || h.src);
+            const hand = hands.reduce((a, h) => !a || h.pos.distanceTo(P[NECK].p) < a.pos.distanceTo(P[NECK].p) ? h : a, null);
+            if (hand) { this.grabbing = { hand, t: 0, hitT: 0.8, shake: 0 }; PL.grabbedBy = this; g.sfx.play('punch', hand.pos, 0.5, 1.5); break; }
+          }
           this.atkT += dt;
           const T = this.zombie ? 1.2 : 0.95;
           if (!this.hitDone && this.atkT > T * 0.45 && this.atkT < T * 0.65) {
@@ -494,6 +508,10 @@ export class Body {
       const l = this.tgt[i];
       p.drive.set(R.x + (l.x * c + l.z * s) * S, R.y + l.y * S, R.z + (-l.x * s + l.z * c) * S);
       p.ds = K * PS[i] * str;
+    }
+    if (this.grabbing && P[LH].cc === core) {           // the grabbing hand clamps onto yours; zombies lean in to bite
+      P[LH].drive.copy(this.grabbing.hand.pos); P[LH].ds = 0.5;
+      if (this.zombie) { P[CROWN].drive.lerp(g.player.head, 0.6); P[NECK].drive.lerp(g.player.head, 0.3); }
     }
     this.lastPelT = (this.lastPelT || new V3()).copy(P[PELVIS].drive);
     if (P[PELVIS].cc !== core) this.lastPelT.copy(P[CHEST].drive);
@@ -964,5 +982,118 @@ Body.prototype.popEye = function (dir) {
   this.g.gore.chunk(grp, { o: pos, x: new V3(1, 0, 0), y: new V3(0, 1, 0) }, this.P[CROWN].vel(new V3()).addScaledVector(dir, 2.2).add(new V3(0, 1.2, 0)), 5);
   this.g.gore.burst(pos, 8, 1.5, 0.4, 0.8);
   this.g.sfx.play('splat', pos, 0.9, 0.8);
+  return true;
+};
+
+const HALF_FLESH = new THREE.MeshLambertMaterial({ color: 0x9a1212, side: THREE.DoubleSide }), HALF_BONE = new THREE.MeshLambertMaterial({ color: 0xece2cc, side: THREE.DoubleSide });
+// ---------- grabbing the player ----------
+Body.prototype.holdOn = function (dt, core) {
+  const G = this.grabbing, g = this.g, PL = g.player, h = G.hand;
+  G.t += dt;
+  // shake them off: a fast yank of the held hand (VR), or a punch / kick (desktop)
+  if (h.vel.length() > 2.6) G.shake += dt; else G.shake = Math.max(0, G.shake - dt * 0.5);
+  const freed = G.shake > 0.12 || (!PL.vr && (PL.punch || PL.kick || PL.swing));
+  if (freed || G.t > 5 || this.stun > 0.6 || this.P[LH].cc !== core) {
+    if (freed) { this.stun = 0.9; this.P[LH].addVel(_v.subVectors(this.P[LH].p, PL.head).setY(0).normalize(), 3); g.sfx.play('punch', h.pos, 0.6, 1.2); }
+    this.letGo(); this.atkT = 0; return;
+  }
+  G.hitT -= dt;
+  if (G.hitT <= 0) {
+    G.hitT = this.zombie ? 1.1 : 0.9;
+    PL.damage(this.zombie ? 10 : 6, this.P[NECK].p);
+    g.sfx.play(this.zombie ? 'splat' : 'punch', PL.head, 0.9, this.zombie ? 0.7 : 1);
+    if (this.zombie) this.face && (this.face.gasp = 1);
+  }
+};
+Body.prototype.letGo = function () {
+  if (!this.grabbing) return;
+  if (this.g.player.grabbedBy === this) this.g.player.grabbedBy = null;
+  this.grabbing = null;
+};
+
+// ---------- split down the middle ----------
+const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion();
+function halfCloth(c, oldMesh, newMesh, n, sg, centre) {
+  c.updateMatrix(); oldMesh.updateMatrixWorld(true); newMesh.updateMatrixWorld(true);
+  const toWorld = new THREE.Matrix4().multiplyMatrices(oldMesh.matrixWorld, c.matrix);
+  const src = c.geometry.index ? c.geometry.toNonIndexed() : c.geometry.clone();
+  const pos = src.attributes.position, col = src.attributes.color, keepP = [], keepC = [], v = new V3();
+  for (let i = 0; i < pos.count; i += 3) {
+    v.set(0, 0, 0);
+    for (let k = 0; k < 3; k++) v.add(_w.fromBufferAttribute(pos, i + k).applyMatrix4(toWorld));
+    v.multiplyScalar(1 / 3);
+    if ((v.sub(centre).dot(n)) * sg < 0) continue;
+    for (let k = 0; k < 3; k++) { keepP.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k)); if (col) keepC.push(col.getX(i + k), col.getY(i + k), col.getZ(i + k)); }
+  }
+  if (!keepP.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(keepP, 3));
+  if (col) geo.setAttribute('color', new THREE.Float32BufferAttribute(keepC, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, c.material); m.castShadow = true;
+  _bm.copy(newMesh.matrixWorld).invert().multiply(toWorld);
+  _bm.decompose(m.position, m.quaternion, m.scale);
+  m.userData.cloth = false;                                  // halves no longer split again
+  return m;
+}
+Body.prototype.bisect = function (n, full) {
+  if (this.bisected) return false;
+  const g = this.g, P = this.P;
+  n = n.clone().setY(0); if (n.lengthSq() < 1e-4) n.set(1, 0, 0); n.normalize();   // a vertical cut plane
+  if (!this.headGone) this.splitHead(n);
+  this.bisected = true; this.wake();
+  const centre = P[CHEST].p.clone();
+  const spineJ = full ? [NECK, CHEST, BELLY, PELVIS] : [NECK, CHEST];
+  const twin = new Map();
+  for (const j of spineJ) {
+    const o = P[j]; if (o.gone) continue;
+    const vel = o.vel(new V3());
+    const t = new Particle(o.p.clone().addScaledVector(n, 0.025), o.r * 0.75, o.m * 0.5); t.body = this; t.j = j;
+    t.place(t.p, vel.clone().addScaledVector(n, 0.9)); g.phys.add(t); this.parts.push(t);
+    o.p.addScaledVector(n, -0.025); o.addVel(n, -0.9); o.m *= 0.5; o.im = 1 / o.m; o.r *= 0.75;
+    twin.set(o, t);
+  }
+  const dOf = (p) => _v.subVectors(p.p, centre).dot(n);
+  const classify = (s) => {
+    const as = twin.has(s.a), bs = twin.has(s.b);
+    if (as && bs) return 'dup';
+    if (!as && !bs) return 'keep';
+    const other = as ? s.b : s.a, d = dOf(other);
+    if (Math.abs(d) < 0.045 || other.j === BELLY || other.j === PELVIS) return 'dup';   // the uncut spine below holds both halves                 // sits on the cut: both halves hang on to it
+    return d > 0 ? 'move' : 'keep';
+  };
+  const swap = (p) => twin.get(p) || p;
+  for (const bone of this.bones.slice()) {
+    const s = bone.stick, k = classify(s);
+    if (k === 'keep') continue;
+    if (k === 'move') { if (twin.has(s.a)) s.a = bone.a = twin.get(s.a); else s.b = bone.b = twin.get(s.b); continue; }
+    const a = bone.a, b = bone.b, dir = _v.subVectors(b.p, a.p).normalize().clone();
+    const mk = (pa, pb, sg) => {
+      const x = n.clone().multiplyScalar(sg); x.addScaledVector(dir, -x.dot(dir)).normalize();
+      const z = new V3().crossVectors(x, dir);
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, dir, z));
+      return new Bone(this, pa, pb, bone.r, bone.kind, { len: bone.len, capA: bone.capA, capB: bone.capB, base: bone.base, q, half: true });
+    };
+    const L = mk(a, b, -1), R = mk(swap(a), swap(b), 1);
+    for (const c of bone.mesh.children.slice()) if (c.userData.cloth) for (const [nb, sg] of [[L, -1], [R, 1]]) { const h = halfCloth(c, bone.mesh, nb.mesh, n, sg, centre); if (h) nb.mesh.add(h); }
+    bone.remove(); this.bones.splice(this.bones.indexOf(bone), 1); this.bones.push(L, R);
+    if (bone.kind === 'torso') { addInnards(L, L.len * 0.5, false); }
+  }
+  for (const s of this.sticks.slice()) {
+    if (!s.on || this.bones.some(b => b.stick === s)) continue;
+    const k = classify(s);
+    if (k === 'move') { if (twin.has(s.a)) s.a = twin.get(s.a); else s.b = twin.get(s.b); }
+    else if (k === 'dup') this.sticks.push(g.phys.link(swap(s.a), swap(s.b), s.len, s.k, s.min));
+    else if (!twin.has(s.a) && !twin.has(s.b)) {          // struts straight across the cut (shoulder to shoulder, hip to hip) snap
+      const da = dOf(s.a), db = dOf(s.b);
+      if (da * db < 0 && Math.abs(da) > 0.03 && Math.abs(db) > 0.03 && (full || Math.max(s.a.p.y, s.b.p.y) > P[BELLY].p.y)) s.on = false;
+    }
+  }
+  if (this.gun) g.dropGun(this);
+  this.components();
+  if (this.alive) this.kill('split');
+  g.gore.burst(centre, 40, 2.5, 1.2, 1.4); g.gore.splash(centre, n, 10, 2.5); g.gore.splash(centre, n.clone().negate(), 10, 2.5);
+  g.sfx.play('tear', centre, 1.2, 0.8, true); g.sfx.play('chop', centre, 1.2, 0.8, true);
+  if (full) g.spillGuts(centre.clone().add(new V3(0, -0.25, 0)), new V3());
   return true;
 };

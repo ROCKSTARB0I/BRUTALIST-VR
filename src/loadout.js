@@ -1,16 +1,17 @@
 // How weapons reach your hands: a paged weapon wall in every map (tabs + arrows, locked if you haven't bought it),
 // stands in the hub to try things, and four body holsters (two hips, two over the shoulders) that ride with you between maps.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { DEFS, Weapon } from './arsenal.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { DEFS, Weapon } from './arsenal.js?v=6';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const QY = (a) => new Q().setFromAxisAngle(new V3(0, 1, 0), a);
 const QX = (a) => new Q().setFromAxisAngle(new V3(1, 0, 0), a);
 const QZ = (a) => new Q().setFromAxisAngle(new V3(0, 0, 1), a);
 
 export const TABS = [
-  { name: 'MELEE', keys: ['axe', 'shovel', 'spear', 'slab', 'mallet'] },
+  { name: 'MELEE', keys: ['axe', 'shovel', 'spear', 'pitchfork', 'scimitar', 'mace', 'slab', 'vaxe', 'zwei', 'naginata', 'mallet'] },
   { name: 'FIREARMS', keys: ['pistol', 'm16', 'bolt', 'cannon'] },
-  { name: 'HEAVY', keys: ['chainsaw', 'nailer', 'minigun'] },
+  { name: 'HEAVY', keys: ['chainsaw', 'nailer', 'minigun', 'autocannon'] },
+  { name: 'TOOLS', keys: ['spawner'] },
 ];
 const PER_PAGE = 3;
 
@@ -63,7 +64,7 @@ export function buildWall(g, w) {
   const st = w.wall = { tab: 0, page: 0, yaw, base, n, t, at, slotMeshes: [] };
   // tabs + arrows along the top
   TABS.forEach((tab, i) => {
-    const m = face(canvasPlane(0.9, 0.26, 512), (i - 1) * 1.0, 0.25 + H - 0.22);
+    const m = face(canvasPlane(0.8, 0.26, 512), (i - 1.5) * 0.86, 0.25 + H - 0.22);
     const btn = { obj: m, r: 0.22, kind: 'wall', tab: i, press: () => { st.tab = i; st.page = 0; fillWall(g); } };
     btn.refresh = () => drawTab(m, tab.name, st.tab === i);
     w.buttons.push(btn); btn.refresh();
@@ -105,7 +106,7 @@ function drawTab(m, text, on) {
   c.clearRect(0, 0, cv.width, cv.height);
   c.fillStyle = on ? '#e6c84a' : '#1d1f23'; c.strokeStyle = '#0c0c0c'; c.lineWidth = 8;
   c.beginPath(); c.roundRect ? c.roundRect(4, 4, cv.width - 8, cv.height - 8, 22) : c.rect(4, 4, cv.width - 8, cv.height - 8); c.fill(); c.stroke();
-  c.fillStyle = on ? '#1b1b1b' : '#e9e9e9'; c.font = "bold 64px 'Roboto Mono', monospace"; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = on ? '#1b1b1b' : '#e9e9e9'; c.font = "bold 58px 'Roboto Mono', monospace"; c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillText(text, cv.width / 2, cv.height / 2 + 4); tex.needsUpdate = true;
 }
 function drawArrow(m, s, on) {

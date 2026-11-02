@@ -1,8 +1,8 @@
 // Weapons: real mass, held on a spring so heavy things lag behind your hand.
 // Local frame: grip at origin. Melee: handle along +Y, cutting edge faces -Z. Guns: barrel along -Z.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { Particle, DT } from './phys.js?v=5';
-import { MODELS } from './models.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { Particle, DT } from './phys.js?v=6';
+import { MODELS } from './models.js?v=6';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 
 const M = {};
@@ -162,6 +162,58 @@ export const DEFS = {
     build() { const g = new THREE.Group(); cyl(g, 0.018, 0.016, 0.55, 0x6b3b1f, 0, 0.2); cyl(g, 0.07, 0.07, 0.2, 0xe6b422, 0, 0.5, 0, 'z', 14); return g; },
     shapes: [{ a: [0, -0.06, 0], b: [0, 0.42, 0], r: 0.022 }, { a: [0, 0.5, 0.1], b: [0, 0.5, -0.1], r: 0.075 }],
     ends: [[0, -0.06, 0], [0, 0.5, 0]],
+  },
+  vaxe: {
+    name: 'Viking Axe', mass: 3.0, price: 800, handle: [-0.08, 0.85], twoHand: true,
+    shapes: [{ a: [0, -0.1, 0], b: [0, 0.98, 0], r: 0.025 }, { a: [0, 0.93, 0.05], b: [0, 0.93, -0.07], r: 0.04 },
+      { a: [0, 0.79, -0.175], b: [0, 1.07, -0.175], r: 0.022, edge: [0, 0, -1], sharp: 1.25 }],
+    ends: [[0, -0.1, 0], [0, 1.0, -0.06]],
+  },
+  zwei: {
+    name: 'Zweihander', mass: 3.4, price: 1500, handle: [-0.12, 0.42], twoHand: true,
+    shapes: [{ a: [0, -0.14, 0], b: [0, 0.45, 0], r: 0.024 }, { a: [0, 0.48, 0], b: [0, 0.68, 0], r: 0.02 },
+      { a: [0, 0.68, 0], b: [0, 1.74, 0], r: 0.03, edge: [0, 0, -1], double: true, sharp: 1.35 }],
+    ends: [[0, -0.14, 0], [0, 1.74, 0]],
+  },
+  scimitar: {
+    name: 'Scimitar', mass: 1.4, price: 600, handle: [-0.04, 0.1],
+    shapes: [{ a: [0, -0.06, 0], b: [0, 0.13, 0], r: 0.02 },
+      { a: [0, 0.15, -0.01], b: [0, 0.83, -0.1], r: 0.022, edge: [0, 0, -1], sharp: 1.45 }],
+    ends: [[0, -0.06, 0], [0, 0.83, -0.1]],
+  },
+  naginata: {
+    name: 'Naginata', mass: 2.5, price: 1100, handle: [-0.9, 0.75], twoHand: true,
+    shapes: [{ a: [0, -0.95, 0], b: [0, 1.0, 0], r: 0.02 },
+      { a: [0, 1.02, -0.01], b: [0, 1.5, -0.07], r: 0.022, edge: [0, 0, -1], sharp: 1.35 },
+      { a: [0, 1.36, -0.05], b: [0, 1.53, -0.08], r: 0.018, stab: true, edge: [0, 0, -1], sharp: 1.3 }],
+    ends: [[0, -0.95, 0], [0, 1.5, -0.06]],
+  },
+  mace: {
+    name: 'Flanged Mace', mass: 2.6, price: 700, handle: [-0.06, 0.38], bluntMul: 1.6,
+    shapes: [{ a: [0, -0.08, 0], b: [0, 0.45, 0], r: 0.02 }, { a: [0, 0.46, 0], b: [0, 0.66, 0], r: 0.068 }],
+    ends: [[0, -0.08, 0], [0, 0.66, 0]],
+  },
+  pitchfork: {
+    name: 'Pitchfork', mass: 1.8, price: 300, handle: [-0.6, 0.8], wide: true, throwable: true,
+    shapes: [{ a: [0, -0.65, 0], b: [0, 0.92, 0], r: 0.018 },
+      { a: [-0.055, 0.95, 0], b: [-0.055, 1.22, 0], r: 0.008, stab: true, edge: [0, 0, -1], double: true, sharp: 1 },
+      { a: [0, 0.95, 0], b: [0, 1.24, 0], r: 0.008, stab: true, edge: [0, 0, -1], double: true, sharp: 1 },
+      { a: [0.055, 0.95, 0], b: [0.055, 1.22, 0], r: 0.008, stab: true, edge: [0, 0, -1], double: true, sharp: 1 }],
+    ends: [[0, -0.65, 0], [0, 1.22, 0]],
+  },
+  autocannon: {
+    name: 'Autocannon', mass: 9, price: 6000, handle: [-0.06, 0.06], mount: 'gun', twoHand: true,
+    gun: { dmg: 4, ball: true, pen: 0, force: 0, mag: 8, sound: 'cannon', recoil: 1.4, auto: false, rpm: 140, reload: 3 },
+    muzzle: [0, 0.05, -0.88],
+    shapes: [{ a: [0, 0.04, 0.3], b: [0, 0.05, -0.85], r: 0.07 }],
+    ends: [[0, 0.04, 0.3], [0, 0.05, -0.85]],
+  },
+  spawner: {
+    name: 'Spawn Gun', mass: 1.3, price: 0, handle: [-0.06, 0.06], mount: 'gun', sandboxOnly: true,
+    gun: { spawner: true, dmg: 0, pen: 0, force: 0, mag: 999, sound: 'click', recoil: 0.1, auto: false, rpm: 300, reload: 0.1 },
+    muzzle: [0, 0.06, -0.26],
+    shapes: [{ a: [0, 0.04, 0.04], b: [0, 0.06, -0.25], r: 0.04 }],
+    ends: [[0, 0.02, 0.04], [0, 0.06, -0.25]],
   },
 };
 

@@ -1,16 +1,16 @@
 // BRUTALIST VR — boot, loop, modes, effects glue.
-import * as THREE from '../vendor/three.module.js?v=5';
-import { Phys, DT, Particle } from './phys.js?v=5';
-import { Body, J, limbGeo, whiteColors } from './body.js?v=5';
-import { Gore } from './gore.js?v=5';
-import { Sfx } from './sfx.js?v=5';
-import { World, registerMap } from './world.js?v=5';
-import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=5';
-import { Motor } from './sfx.js?v=5';
-import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=5';
-import { Player } from './player.js?v=5';
-import { Weapon, DEFS } from './arsenal.js?v=5';
-import { weaponContacts, strikerContacts, shoot } from './combat.js?v=5';
+import * as THREE from '../vendor/three.module.js?v=6';
+import { Phys, DT, Particle, rayCapsule } from './phys.js?v=6';
+import { Body, J, limbGeo, whiteColors } from './body.js?v=6';
+import { Gore } from './gore.js?v=6';
+import { Sfx } from './sfx.js?v=6';
+import { World, registerMap } from './world.js?v=6';
+import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=6';
+import { Motor } from './sfx.js?v=6';
+import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=6';
+import { Player } from './player.js?v=6';
+import { Weapon, DEFS } from './arsenal.js?v=6';
+import { weaponContacts, strikerContacts, shoot } from './combat.js?v=6';
 const V3 = THREE.Vector3;
 
 const SETTINGS_KEY = 'splinter_settings';
@@ -230,9 +230,10 @@ g.trigger = (w, held, pressed, dt) => {
   w.fireT = 60 / gun.rpm;
   const muzzle = w.worldPoint(w.def.muzzle, new V3());
   const dir = new V3(0, 0, -1).applyQuaternion(w.quat);
+  if (gun.spawner) { w.ammo = gun.mag; g.spawnFrom(muzzle, dir); return; }
   g.sfx.play(gun.sound, muzzle, gun.spin ? 0.8 : 1.2, gun.spin ? 1.15 : 1, !gun.spin);
   muzzleFlash(muzzle, w.quat);
-  shoot(g, muzzle, dir, gun);
+  if (gun.ball) g.fireBall(muzzle, dir, w.vel); else shoot(g, muzzle, dir, gun);
   // recoil: kick the gun up and back on its spring
   w.vel.addScaledVector(dir, -gun.recoil * 1.6).add(new V3(0, gun.recoil * 1.2, 0));
   w.quat.multiply(new THREE.Quaternion().setFromAxisAngle(new V3(1, 0, 0), gun.recoil * 0.18));
@@ -276,8 +277,49 @@ g.nailMark = (at, dir, p, bone) => {
   g.sfx.play('thud', at, 0.5, 1.8);
   if (p) { p.body.wake(); g.gore.burst(at, 6, 1.5, 0.3); }
 };
-g.reload = (w) => { if (w.reloadT > 0 || w.ammo === w.def.gun.mag) return; w.reloadT = w.def.gun.reload; g.sfx.play('reload', w.pos, 0.9); };
+// autocannon: real cannonballs that fly, bounce and smash through whatever they meet
+const ballGeo = new THREE.SphereGeometry(0.045, 12, 8), ballMat = new THREE.MeshPhongMaterial({ color: 0x2a2a2c, shininess: 60 });
+g.balls = [];
+// desktop guns converge on whatever the crosshair is over (a wall, a body), not a fixed far point
+let aimCache = { t: -1, d: 18 };
+g.aimDistance = (eye, dir) => {
+  if (aimCache.t === g.time) return aimCache.d;
+  let d = 40; const h = g.phys.ray(eye, dir, 40, true); if (h) d = h.t;
+  for (const b of g.bodies) { if (b.center().distanceTo(eye) > d + 1) continue; for (const bone of b.bones) { const r = rayCapsule(eye, dir, bone.a.p, bone.b.p, bone.r); if (r && r[0] > 0.3 && r[0] < d) d = r[0]; } }
+  aimCache = { t: g.time, d: Math.max(1.5, d) }; return aimCache.d;
+};
+g.fireBall = (from, dir, inherit) => {
+  const p = new Particle(from, 0.045, 6); p.place(from, dir.clone().multiplyScalar(44).add(inherit || new V3())); p.grav = 0.6; p.fric = 0.3;
+  g.phys.add(p);
+  const mesh = new THREE.Mesh(ballGeo, ballMat); mesh.castShadow = true; scene.add(mesh);
+  const st = { pos: p.p, prev: p.o, r: 0.09, mass: 30, kind: 'ball', dmgMul: 2.5 };
+  g.balls.push({ p, mesh, st, life: 6 });
+  g.gore.puff(from.clone().addScaledVector(dir, 0.15), 0.3, '#9a958c');
+};
+function updateBalls(dt) {
+  for (const b of g.balls) { b.life -= dt; b.mesh.position.copy(b.p.p); }
+  g.balls = g.balls.filter(b => { if (b.life > 0) return true; scene.remove(b.mesh); b.p.gone = true; return false; });
+}
+function stepBalls() { for (const b of g.balls) if (b.p.p.distanceToSquared(b.p.o) > 1e-6) g.strike(b.st); }
+// spawn gun (sandbox): fires a beam, drops the chosen enemy where it lands. B/Y cycles type, stick click undoes, hold it to clear all
+const SPAWNS = [{ name: 'Grunt', opts: {} }, { name: 'Soldier', opts: { kind: 'soldier', hp: 140 } }, { name: 'Rifleman', opts: { kind: 'soldier', gun: true, hp: 140 } }, { name: 'Zombie', opts: { zombie: true } }];
+g.spawnType = 0; g.spawned = [];
+g.spawnFrom = (from, dir) => {
+  const h = g.phys.ray(from, dir, 60, true); if (!h) return;
+  const at = from.clone().addScaledVector(dir, h.t);
+  if (h.ax !== 1 || h.sg < 0) at.addScaledVector(dir, -0.5);
+  at.y = g.phys.groundAt(at.x, at.z, at.y + 0.3);
+  const yaw = Math.atan2(g.player.head.x - at.x, g.player.head.z - at.z);
+  const b = new Body(g, at, yaw, Object.assign({ speed: 1.4 }, SPAWNS[g.spawnType].opts));
+  g.bodies.push(b); g.spawned.push(b);
+  g.tracer(from, at.clone().add(new V3(0, 1, 0))); g.sfx.play('pullcord', from, 0.4, 2); g.gore.puff(at.clone().add(new V3(0, 0.8, 0)), 0.5, '#37c8ff');
+};
+g.spawnUndo = () => { const b = g.spawned.pop(); if (b && g.bodies.includes(b)) { b.dispose(); g.bodies.splice(g.bodies.indexOf(b), 1); g.phys.prune(); g.sfx.play('click', null, 0.6, 0.7); } };
+g.spawnClear = () => { for (const b of g.bodies.slice()) if (!b.noReward) { b.dispose(); } g.bodies = g.bodies.filter(b => b.noReward); g.spawned = []; g.phys.prune(); g.sfx.play('slam', null, 0.5, 1.4); };
+g.reload = (w) => {
+  if (w.def.gun.spawner) { g.spawnType = (g.spawnType + 1) % SPAWNS.length; g.sfx.play('click', w.pos, 0.6, 1.2); return; } if (w.reloadT > 0 || w.ammo === w.def.gun.mag) return; w.reloadT = w.def.gun.reload; g.sfx.play('reload', w.pos, 0.9); };
 g.cycleFire = (w) => {
+  if (w.def.gun.spawner) { g.spawnUndo(); return; }
   const m = w.def.gun.modes; if (!m) return;
   w.fireMode = m[(m.indexOf(w.fireMode || m[0]) + 1) % m.length];
   g.sfx.play('click', w.pos, 0.6, 1.3);
@@ -294,10 +336,11 @@ g.equipKey = (key, hand) => {
 };
 function removeWeapon(w) { w.dispose(); const i = g.weapons.indexOf(w); if (i >= 0) g.weapons.splice(i, 1); for (const s of g.holsters.slots) if (s.w === w) s.w = null; }
 g.removeWeapon = removeWeapon;
-g.wallAllows = (key) => (g.mode === 'career' || g.mode === 'job') ? g.career.owned.includes(key) : true;
+g.wallAllows = (key) => DEFS[key].sandboxOnly ? g.mode === 'sandbox' : (g.mode === 'career' || g.mode === 'job') ? g.career.owned.includes(key) : true;
 
 // ---------------- weapon wall / stands ----------------
-function stockRacks() { buildWall(g, g.world); for (const sl of g.world.slots || []) if (!sl.wall && !sl.w) placeSlot(g, sl); }
+g.placeSlot = (sl) => placeSlot(g, sl);
+function stockRacks() { buildWall(g, g.world); for (const st of g.world.stalls || []) st.fill(); for (const sl of g.world.slots || []) if (!sl.wall && !sl.w) placeSlot(g, sl); }
 g.loadMap = (name) => {
   // holstered weapons come with you (in career only the ones you own)
   const carry = g.holsters.keys().map(k => k && (!(g.mode === 'career' || g.mode === 'job') || g.career.owned.includes(k)) ? k : null);
@@ -493,6 +536,7 @@ const hudEl = document.getElementById('hud');
 g.hudLine1 = () => g.mode === 'sandbox' ? `SANDBOX  kills ${g.kills}` : g.mode === 'career' ? 'HUB · pick a job on the left wall' : g.mode === 'job' && g.job ? `${g.job.def.name}  ${g.job.toSpawn + aliveCount()} left  ${Math.floor(g.job.t / 60)}:${String(Math.floor(g.job.t % 60)).padStart(2, '0')}` : `WAVE ${g.wave}  kills ${g.kills}`;
 g.hudLine2 = () => {
   const w = g.player.hands.right.held || g.player.hands.left.held;
+  if (w && w.def.gun && w.def.gun.spawner) return `$${g.cash}  spawn: ${SPAWNS[g.spawnType].name}`;
   const ammo = w && w.def.gun ? `  ${w.reloadT > 0 ? 'reloading' : w.ammo + '/' + w.def.gun.mag}${w.fireMode ? ' ' + w.fireMode : ''}` : '';
   return `$${g.cash}${ammo}`;
 };
@@ -505,7 +549,7 @@ function updateHud(dt) {
   const w = p.hands.right.held;
   document.getElementById('l2').textContent = g.hudLine2() + (w ? '  ·  ' + w.def.name : '  ·  fists');
   const hb = g.hoverBtn, hint = document.getElementById('hint');
-  if (hint) { hint.textContent = hb && !p.vr ? (hb.kind === 'job' ? `E: start ${hb.job.name}` : 'E: buy / use') : ''; }
+  if (hint) { hint.textContent = p.grabbedBy && !p.vr ? 'GRABBED · punch or kick to break free' : hb && !p.vr ? (hb.kind === 'job' ? `E: start ${hb.job.name}` : 'E: buy / use') : ''; }
 }
 let bannerT = null;
 function banner(a, b = '') {
@@ -537,8 +581,10 @@ function frame(t) {
       for (const w of g.weapons) if (w.mode === 'held' || w.mode === 'loose') weaponContacts(g, w);
       if ((stepN++ & 1) === 0) collideBodies();
       g.phys.step();
+      stepBalls();
     }
     checkImpaled();
+    updateBalls(dt);
     g.gore.update(dt);
     for (const b of g.bodies) b.render();
     for (const b of g.npcs) b.render();
@@ -599,6 +645,7 @@ if (navigator.xr) {
     };
   });
 } else { btnVR.textContent = 'VR not available here'; btnVR.disabled = true; }
+addEventListener('keydown', e => { if (e.code === 'KeyK' && g.playing && g.mode === 'sandbox') g.spawnClear(); });
 addEventListener('keydown', e => { if (e.code === 'Escape' && g.playing && !g.player.vr) { setTimeout(() => { if (!document.pointerLockElement) stop(); }, 50); } });
 
 // settings widgets
