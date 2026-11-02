@@ -1,6 +1,6 @@
 // Verlet particle world: stickmen are literally sticks between particles.
 // Fixed 120 Hz step, position-based constraints, static boxes, soft "muscle" drive per particle.
-import * as THREE from '../vendor/three.module.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
 const V3 = THREE.Vector3;
 export const DT = 1 / 120;
 export const GRAV = -9.81;

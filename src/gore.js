@@ -1,7 +1,7 @@
 // Blood that never goes away: droplets fly, land, and are painted into per-face canvases on the level boxes.
 // Also: loose chunks (head halves, skull bits, brains) and bullet-hole decals stuck to body bones.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { Particle, DT } from './phys.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { Particle, DT } from './phys.js?v=5';
 const V3 = THREE.Vector3;
 const MAXD = 1600;
 const PPM = 40;                // canvas pixels per metre on level surfaces
@@ -111,6 +111,7 @@ export class Gore {
     let budget = 3;
     for (const f of this.dirty) { f.tex.needsUpdate = true; this.dirty.delete(f); if (--budget <= 0) break; }
     for (const c of this.chunks) c.sync();
+    this.updateFx(dt);
   }
 
   // ---- level painting ----
@@ -186,6 +187,43 @@ export class Gore {
       const hp = pos.clone().addScaledVector(this._v, h.t);
       this.paint(h.box, h.ax, h.sg, hp.x, hp.y, hp.z, 0.02 + Math.random() * 0.05, this._v.x * 5, this._v.y * 5, this._v.z * 5);
     }
+  }
+
+  // ---- blood mist, sparks, slash marks ----
+  puff(pos, size = 0.25, color) {
+    if (!this.puffs) { this.puffs = []; this.puffGeo = new THREE.SphereGeometry(1, 8, 6); }
+    if (this.puffs.length > 40) { const o = this.puffs.shift(); this.g.scene.remove(o.m); }
+    const m = new THREE.Mesh(this.puffGeo, new THREE.MeshBasicMaterial({ color: color || this.col(1), transparent: true, opacity: 0.55, depthWrite: false }));
+    m.position.copy(pos); m.scale.setScalar(size * 0.4); this.g.scene.add(m);
+    this.puffs.push({ m, t: 0, size, vy: 0.15 });
+  }
+  sparks(pos, n = 8) {
+    if (!this.sparkList) { this.sparkList = []; this.sparkGeo = new THREE.BoxGeometry(0.006, 0.006, 0.03); this.sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd36a }); }
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(this.sparkGeo, this.sparkMat); m.position.copy(pos); this.g.scene.add(m);
+      const v = new V3(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(2 + Math.random() * 4);
+      this.sparkList.push({ m, v, t: 0.15 + Math.random() * 0.25 });
+    }
+  }
+  updateFx(dt) {
+    for (const p of this.puffs || []) { p.t += dt; const k = p.t / 0.7; p.m.scale.setScalar(p.size * (0.4 + k * 0.9)); p.m.position.y += p.vy * dt; p.m.material.opacity = Math.max(0, 0.55 * (1 - k)); }
+    if (this.puffs) this.puffs = this.puffs.filter(p => { if (p.t < 0.7) return true; this.g.scene.remove(p.m); p.m.material.dispose(); return false; });
+    for (const s of this.sparkList || []) { s.t -= dt; s.v.y -= 9.8 * dt; s.m.position.addScaledVector(s.v, dt); s.m.lookAt(s.m.position.clone().add(s.v)); }
+    if (this.sparkList) this.sparkList = this.sparkList.filter(s => { if (s.t > 0) return true; this.g.scene.remove(s.m); return false; });
+  }
+  // a dark red gash stuck on a bone, stretched along the slash
+  slashMark(bone, point, normal, along, len) {
+    const mesh = bone.mesh; mesh.updateMatrixWorld();
+    const d = new THREE.Mesh(this.holeGeo, this.exitMat);
+    const inv = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+    d.position.copy(point).addScaledVector(normal, 0.003).applyMatrix4(inv);
+    const t = along.clone().addScaledVector(normal, -along.dot(normal)).normalize();
+    const b = new V3().crossVectors(normal, t);
+    const wq = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(t, b, normal));
+    const mq = new THREE.Quaternion(); mesh.getWorldQuaternion(mq);
+    d.quaternion.copy(mq.invert().multiply(wq));
+    d.scale.set(len, 0.006, 1);
+    mesh.add(d);
   }
 
   // ---- decals on body bones ----

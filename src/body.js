@@ -1,8 +1,9 @@
 // Stickmen: 17 particles, capsule bones between them, hidden struts that hold the torso together.
 // Alive = particles are pulled toward an animated pose (muscles). Dead = pure ragdoll.
 // Any bone can be cut anywhere along its length; the struts that cross the cut plane snap with it.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { Particle, DT } from './phys.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { Particle, DT } from './phys.js?v=5';
+import { MODELS } from './models.js?v=5';
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
 
@@ -133,9 +134,10 @@ class Bone {
   }
   point(t, out) { return out.copy(this.a.p).lerp(this.b.p, t); }
   // splash body-local vertex colours red around a world point
-  paint(pt, rad, k = 0.85) {
-    paintMesh(this.mesh, pt, rad, k, this.body.bloodRGB());
-    for (const c of this.mesh.children) if (c.userData.cloth) paintMesh(c, pt, rad, k, this.body.bloodRGB());
+  paint(pt, rad, k = 0.85, colour) {
+    const c0 = colour || this.body.bloodRGB();
+    paintMesh(this.mesh, pt, rad, k, c0);
+    if (!colour) for (const c of this.mesh.children) if (c.userData.cloth) paintMesh(c, pt, rad, k, c0);
   }
   _unused(pt, rad, k) {
     const m = this.mesh; m.updateMatrixWorld();
@@ -194,6 +196,7 @@ export class Body {
     });
     this.dress();
     this.buildFace();
+    if (opts.gun) { this.gun = true; this.gunMesh = MODELS.m16(); this.gunMesh.traverse(m => { if (m.isMesh) m.castShadow = true; }); this.group.add(this.gunMesh); }
     for (const [a, b, k] of STRUCT) this.sticks.push(game.phys.link(this.P[a], this.P[b], undefined, k ?? 1));
     for (const [a, b, m] of MINS) this.sticks.push(game.phys.link(this.P[a], this.P[b], m * S, 0.5, true));
     this.root = { x: pos.x, y: pos.y, z: pos.z, yaw };
@@ -249,6 +252,8 @@ export class Body {
   kill(how) {
     if (!this.alive) return;
     this.alive = false; this.state = 'dead'; this.deadT = 0; this.reanimAt = 2.5 + Math.random() * 2;
+    if (!this.headGone && how !== 'head' && how !== 'bled') this.g.sfx.play('gurgle', this.P[NECK].p, 0.7);
+    if (this.gun) this.g.dropGun(this);
     for (const p of this.parts) p.ds = 0;
     this.g.onKill(this, how);
   }
@@ -299,6 +304,9 @@ export class Body {
       if (R > 0) this.sever(C, n, R, bone.stick);
       this.caps.push({ bone: A, end: 1, bleed: 1 }, { bone: B, end: 0, bleed: 1 });
       if (bone.kind === 'head' || bone.kind === 'neck') this.headCut = true;
+      // what's inside shows at the cut: ribs + lungs in the chest, guts low down, brain in the skull
+      if (bone.kind === 'torso') { addInnards(A, A.len, bone.b === this.P[PELVIS]); addInnards(B, 0, bone.b === this.P[PELVIS]); if (bone.b === this.P[PELVIS]) this.g.spillGuts(C, va); }
+      if (bone.kind === 'head') { addBrain(A, A.len, bone.r); addBrain(B, 0, bone.r); }
     }
     A.paint(C, bone.r * 2.5, 0.6); B.paint(C, bone.r * 2.5, 0.6);
     this.check();
@@ -403,6 +411,17 @@ export class Body {
           if (this.detourT > 0) { this.detourT -= dt; dy = this.detour - R.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; }
         }
         turn(this.state === 'attack' ? 6 : 3.5);
+        if (this.gun && this.P[RH].cc === core) {
+          this.gunT = (this.gunT || 1.5) - dt;
+          const los = dist < 13 && this.g.losTo(this.P[NECK].p, head);
+          this.aiming = los && dist > 2.2;
+          if (this.aiming) {
+            this.moveAmt *= 1 - Math.min(1, dt * 6);
+            if (this.gunT <= 0 && Math.abs(dy) < 0.25) { this.burst = 3; this.gunT = 1.6 + Math.random() * 1.2; }
+            if (this.burst > 0 && (this.burstT = (this.burstT || 0) - dt) <= 0) { this.burst--; this.burstT = 0.1; this.g.enemyShoot(this); }
+            break;
+          }
+        }
         if (this.state === 'walk') {
           const go = dist > 0.75 ? 1 : 0;
           this.moveAmt += (go - this.moveAmt) * Math.min(1, dt * 5);
@@ -544,6 +563,10 @@ export class Body {
         L[RE].set(-0.25, 1.2, 0.08); L[RH].set(-0.15, 1.4, 0.24);
       }
     }
+    if (this.gun && this.aiming) {                      // shouldered rifle, pointed at you
+      L[RE].set(-0.2, 1.22, 0.16); L[RH].set(-0.1, 1.34, 0.3); L[LE].set(0.14, 1.24, 0.34); L[LH].set(0.0, 1.36, 0.6);
+      for (const j of [CROWN, NECK]) L[j].x -= 0.04;
+    }
     if (this.state === 'attack') {
       const T = this.zombie ? 1.2 : 0.95, u = this.atkT / T;
       // target: player's head in our local frame
@@ -584,6 +607,13 @@ export class Body {
 
   render() {
     this.animFace();
+    if (this.gunMesh) {                                 // the rifle rides the right hand, pointed through the left
+      const rh = this.P[RH].p, lh = this.P[LH].p;
+      this.gunMesh.position.copy(rh);
+      const dir = _v.subVectors(lh, rh);
+      if (dir.lengthSq() < 0.01 || this.P[LH].cc !== this.P[RH].cc) dir.set(Math.sin(this.root.yaw), 0, Math.cos(this.root.yaw));
+      this.gunMesh.quaternion.setFromUnitVectors(_w.set(0, 0, -1), dir.normalize());
+    }
     for (const b of this.bones) b.update();
     const P = this.P, pel = P[PELVIS].gone ? P[CHEST] : P[PELVIS];
     const gy = this.g.phys.groundAt(pel.p.x, pel.p.z, pel.p.y);
@@ -897,4 +927,42 @@ Body.prototype.animFace = function () {
 };
 // flinch: gasp + wide eyes when hurt
 const _hurt = Body.prototype.hurt;
-Body.prototype.hurt = function (dmg, stun) { if (this.face) this.face.gasp = 1; return _hurt.call(this, dmg, stun); };
+Body.prototype.hurt = function (dmg, stun) {
+  if (this.face) this.face.gasp = 1;
+  if (this.static && this.alive) { this.static = false; this.state = 'walk'; this.speed = 1.6; }   // a shopkeeper you hit comes over the counter at you
+  return _hurt.call(this, dmg, stun);
+};
+
+// ---------- innards ----------
+const RIB = new THREE.MeshLambertMaterial({ color: 0xefe6d2 }), LUNG = new THREE.MeshLambertMaterial({ color: 0xd2757e }), GUT = new THREE.MeshLambertMaterial({ color: 0xc9707a }), BRAIN = new THREE.MeshLambertMaterial({ color: 0xdb9aa0 });
+function addInnards(bone, y, low) {
+  const g = new THREE.Group(); g.position.y = y; bone.mesh.add(g);
+  const r = bone.r * 0.92;
+  if (!low) {
+    const ribs = new THREE.Mesh(new THREE.TorusGeometry(r, 0.006, 4, 18, Math.PI * 1.7), RIB); ribs.rotation.x = Math.PI / 2; ribs.rotation.z = Math.PI * 0.65; g.add(ribs);
+    for (const sx of [-1, 1]) { const l = new THREE.Mesh(new THREE.SphereGeometry(r * 0.42, 8, 6), LUNG); l.scale.set(1, 0.5, 1); l.position.set(sx * r * 0.42, 0, 0); g.add(l); }
+  } else {
+    for (let i = 0; i < 4; i++) { const k = new THREE.Mesh(new THREE.TorusGeometry(r * 0.25, r * 0.12, 5, 10), GUT); k.position.set((i % 2 - 0.5) * r * 0.6, 0, (Math.floor(i / 2) - 0.5) * r * 0.6); k.rotation.x = Math.PI / 2; g.add(k); }
+  }
+  const spine = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.18, r * 0.18, 0.01, 8), RIB); spine.position.set(0, 0, r * 0.75); g.add(spine);
+}
+function addBrain(bone, y, r) {
+  const b = new THREE.Mesh(new THREE.SphereGeometry(r * 0.78, 12, 8), BRAIN); b.scale.set(1, 0.25, 1.1); b.position.y = y; bone.mesh.add(b);
+}
+// an eye knocked out of its socket, on a red stalk
+Body.prototype.popEye = function (dir) {
+  const F = this.face; if (!F) return false;
+  const e = F.eyes.find(x => !x.popped); if (!e) return false;
+  e.popped = true;
+  e.ball.updateMatrixWorld(); const pos = new V3(); e.ball.getWorldPosition(pos);
+  e.pivot.visible = false;
+  const hole = new THREE.Mesh(G_EYE, MOUTH); hole.scale.setScalar(e.ball.scale.x * 0.9); e.socket.add(hole);
+  const grp = new THREE.Group(), er = e.ball.scale.x;
+  const ball = new THREE.Mesh(G_EYE, EYE_W); ball.scale.setScalar(er); grp.add(ball);
+  const pup = new THREE.Mesh(G_PUP, PUPIL); pup.scale.set(er * 0.24, er * 0.24, er * 0.14); pup.position.z = -er * 0.9; grp.add(pup);
+  const stalk = new THREE.Mesh(new THREE.CylinderGeometry(er * 0.18, er * 0.12, er * 3, 5), new THREE.MeshLambertMaterial({ color: 0x8a1414 })); stalk.rotation.x = Math.PI / 2; stalk.position.z = er * 1.6; grp.add(stalk);
+  this.g.gore.chunk(grp, { o: pos, x: new V3(1, 0, 0), y: new V3(0, 1, 0) }, this.P[CROWN].vel(new V3()).addScaledVector(dir, 2.2).add(new V3(0, 1.2, 0)), 5);
+  this.g.gore.burst(pos, 8, 1.5, 0.4, 0.8);
+  this.g.sfx.play('splat', pos, 0.9, 0.8);
+  return true;
+};

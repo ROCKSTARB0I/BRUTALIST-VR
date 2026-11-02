@@ -1,8 +1,8 @@
 // Weapons: real mass, held on a spring so heavy things lag behind your hand.
 // Local frame: grip at origin. Melee: handle along +Y, cutting edge faces -Z. Guns: barrel along -Z.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { Particle, DT } from './phys.js?v=4';
-import { MODELS } from './models.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { Particle, DT } from './phys.js?v=5';
+import { MODELS } from './models.js?v=5';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 
 const M = {};

@@ -1,7 +1,7 @@
 // You: WebXR rig (Quest) or mouse + keyboard. Solid geometric gloves, grabs, throws, kicks, headbutts.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { DT } from './phys.js?v=4';
-import { DEFS, Weapon } from './arsenal.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { DT } from './phys.js?v=5';
+import { DEFS, Weapon } from './arsenal.js?v=5';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const UP = new V3(0, 1, 0);
 const _v = new V3(), _w = new V3(), _q = new Q(), _m = new THREE.Matrix4(), _e = new THREE.Euler();
@@ -60,13 +60,14 @@ export class Player {
     this.g = g;
     this.dolly = new THREE.Group(); g.scene.add(this.dolly);
     this.cam = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.03, 120);
-    this.dolly.add(this.cam);
+    this.rig = new THREE.Group(); this.dolly.add(this.rig);   // VR height boost lifts head and hands together
+    this.rig.add(this.cam);
     this.head = new V3(); this.headPrev = new V3();
     this.hands = { left: new Hand(this, 'left'), right: new Hand(this, 'right') };
     this.H = [this.hands.left, this.hands.right];
     this.hp = 100; this.maxHp = 100; this.dead = false;
     this.vy = 0; this.onGround = true;
-    this.yaw = 0; this.pitch = 0; this.eye = 1.65;
+    this.yaw = 0; this.pitch = 0; this.eye = 1.82;
     this.keys = {}; this.mdx = 0; this.mdy = 0; this.swing = null; this.punch = null;
     this.kick = null; this.butt = null; this.snapT = 0;
     this.headSt = { pos: new V3(), prev: new V3(), r: 0.11, mass: 5, kind: 'head', dmgMul: 1.2 };
@@ -93,7 +94,7 @@ export class Player {
   initXR(renderer) {
     for (let i = 0; i < 2; i++) {
       const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i);
-      this.dolly.add(ray, grip);
+      this.rig.add(ray, grip);
       ray.addEventListener('connected', (e) => {
         const h = e.data.handedness === 'left' ? this.hands.left : this.hands.right;
         h.src = e.data; h.ray = ray; h.grip = grip;
@@ -294,7 +295,8 @@ export class Player {
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
     this.move((fx * c + fz * s) * sp, (-fx * s + fz * c) * sp, dt);
     const crouch = k.KeyC || k.ControlLeft;
-    this.eye += ((crouch ? 1.05 : 1.65) - this.eye) * Math.min(1, dt * 10);
+    this.eye += ((crouch ? 1.15 : 1.82) - this.eye) * Math.min(1, dt * 10);
+    this.rig.position.y = 0;
     this.cam.position.set(0, this.eye, 0);
     // headbutt lunge
     let lunge = 0;
@@ -343,6 +345,7 @@ export class Player {
 
   updateVR(dt) {
     const g = this.g;
+    this.rig.position.y = (this.settings.heightBoost ?? 20) / 100;
     // the dolly-parented camera carries the real head pose in world space (the raw XR camera ignores our snap turns)
     this.dolly.updateMatrixWorld(true);
     const headQ = this.cam.getWorldQuaternion(new Q());

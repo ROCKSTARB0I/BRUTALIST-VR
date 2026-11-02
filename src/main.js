@@ -1,16 +1,16 @@
 // BRUTALIST VR — boot, loop, modes, effects glue.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { Phys, DT, Particle } from './phys.js?v=4';
-import { Body, J, limbGeo, whiteColors } from './body.js?v=4';
-import { Gore } from './gore.js?v=4';
-import { Sfx } from './sfx.js?v=4';
-import { World, registerMap } from './world.js?v=4';
-import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=4';
-import { Motor } from './sfx.js?v=4';
-import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=4';
-import { Player } from './player.js?v=4';
-import { Weapon, DEFS } from './arsenal.js?v=4';
-import { weaponContacts, strikerContacts, shoot } from './combat.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { Phys, DT, Particle } from './phys.js?v=5';
+import { Body, J, limbGeo, whiteColors } from './body.js?v=5';
+import { Gore } from './gore.js?v=5';
+import { Sfx } from './sfx.js?v=5';
+import { World, registerMap } from './world.js?v=5';
+import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=5';
+import { Motor } from './sfx.js?v=5';
+import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=5';
+import { Player } from './player.js?v=5';
+import { Weapon, DEFS } from './arsenal.js?v=5';
+import { weaponContacts, strikerContacts, shoot } from './combat.js?v=5';
 const V3 = THREE.Vector3;
 
 const SETTINGS_KEY = 'splinter_settings';
@@ -31,7 +31,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 const g = window.__sp = {
   renderer, scene, time: 0, playing: false,
-  settings: Object.assign({ handPitch: 0, sens: 1, blood: 'red', mode: 'waves', count: 5 }, saved),
+  settings: Object.assign({ handPitch: 0, sens: 1, blood: 'red', mode: 'waves', count: 5, heightBoost: 20 }, saved),
   upgrades: { punch: 1, dusters: false, armor: false },
   bodies: [], weapons: [], racks: [],
   cash: 0, kills: 0, wave: 0, infected: false, cutScale: 1, god: false,
@@ -66,6 +66,7 @@ scene.add(g.player.dolly);
 g.saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(g.settings)); } catch (e) {} };
 g.strike = (st) => strikerContacts(g, st);
 g.onKill = (body, how) => {
+  if (body.noReward) { g.sfx.play('thud', body.center(), 0.6); return; }
   g.kills++;
   const bonus = { head: 15, halved: 20, crush: 20, headshot: 12, split: 25 }[how] || 8;
   g.cash += Math.round(bonus * (g.upgrades.reward || 1));
@@ -79,10 +80,43 @@ g.onDismember = (body, bone, C, mode) => {
   if (thick || bone.kind === 'neck') g.sfx.play('tear', C, 0.7);
   if (mode === 'slice') {
     g.gore.burst(C, thick ? 26 : 14, 2.6, 0.8, 1.3);
+    g.gore.puff(C, thick ? 0.35 : 0.2);
     g.gore.splash(C, new V3(0, -0.4, 0), thick ? 8 : 3, 2);
     g.cash += 3;
   }
   if (body.alive && !body.zombie) g.sfx.play('grunt', body.P[J.NECK].p, 0.8);
+};
+// enemy riflemen: line of sight, bursts with spread, tracers; you get hit if a round passes close to your head or chest
+g.losTo = (a, b) => { const d = b.clone().sub(a), L = d.length(); return !g.phys.ray(a, d.divideScalar(L), L - 0.3, true); };
+g.enemyShoot = (body) => {
+  const P = g.player, from = body.gunMesh ? body.gunMesh.localToWorld(new V3(0, 0.06, -0.62)) : body.P[J.RH].p.clone();
+  const aim = P.head.clone().add(new V3(0, -0.25 - Math.random() * 0.3, 0));
+  const dir = aim.sub(from).normalize().add(new V3((Math.random() - 0.5) * 0.07, (Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.07)).normalize();
+  const wh = g.phys.ray(from, dir, 60, true), maxT = wh ? wh.t : 60;
+  g.sfx.play('rifle', from, 0.9, 1.05); muzzleFlash(from, body.gunMesh ? body.gunMesh.quaternion : new THREE.Quaternion());
+  let endT = maxT;
+  for (const [pt, r, dmg] of [[P.head, 0.16, 14], [P.head.clone().add(new V3(0, -0.45, 0)), 0.22, 8]]) {
+    const t = pt.clone().sub(from).dot(dir);
+    if (t < 0 || t > maxT) continue;
+    if (from.clone().addScaledVector(dir, t).distanceTo(pt) < r) { P.damage(dmg, from); endT = t; break; }
+  }
+  if (wh && endT === maxT) g.impact(from.clone().addScaledVector(dir, wh.t), wh, dir);
+  g.tracer(from, from.clone().addScaledVector(dir, Math.min(endT, 40)));
+};
+g.dropGun = (body) => {
+  if (!body.gunMesh) return;
+  const m = body.gunMesh; m.updateMatrixWorld();
+  const pos = new V3(), q = new THREE.Quaternion(); m.getWorldPosition(pos); m.getWorldQuaternion(q);
+  body.group.remove(m); body.gunMesh = null; body.gun = false;
+  const w = new Weapon(g, 'm16', pos, q, 'rack'); w.ammo = 10 + (Math.random() * 15 | 0); w.mode = 'loose'; w.makeLoose(new V3(0, 1, 0)); g.weapons.push(w);
+};
+const gutGeo = new THREE.CapsuleGeometry(0.022, 0.09, 3, 8), gutMat = new THREE.MeshLambertMaterial({ color: 0xc9707a });
+g.spillGuts = (pos, vel) => {
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(gutGeo, gutMat); m.rotation.z = Math.random() * 3;
+    g.gore.chunk(m, { o: pos.clone().add(new V3((Math.random() - 0.5) * 0.1, -0.02 * i, (Math.random() - 0.5) * 0.1)), x: new V3(1, 0, 0), y: new V3(0, 1, 0) }, vel.clone().add(new V3((Math.random() - 0.5) * 1.5, Math.random(), (Math.random() - 0.5) * 1.5)), 2);
+  }
+  g.sfx.play('tear', pos, 0.9, 0.8);
 };
 g.onSplit = (body, pt) => {
   g.sfx.play('crush', pt, 1.2, 0.9, true);
@@ -152,6 +186,8 @@ g.impact = (P, wh, dir) => {
   f.ctx.fillStyle = 'rgba(30,26,22,0.85)'; f.ctx.beginPath(); f.ctx.arc(u * f.W, (1 - v) * f.H, 2.2, 0, Math.PI * 2); f.ctx.fill();
   g.gore.dirty.add(f);
   g.sfx.play('thud', P, 0.25, 2.2);
+  g.gore.puff(P.clone().addScaledVector(dir, -0.05), 0.12, '#b8b2a6');
+  if (wh.box.paintBase && Math.random() < 0.5) g.gore.sparks(P, 3);
 };
 // tracers + muzzle flashes
 const tracers = [];
@@ -268,7 +304,7 @@ g.loadMap = (name) => {
   g.holsters.clear();
   for (const w of g.weapons.slice()) removeWeapon(w);
   for (const b of g.bodies) b.dispose(); g.bodies.length = 0;
-  for (const b of g.npcs) b.dispose(); g.npcs = [];
+  g.npcs = [];
   scene.remove(g.world.group);
   g.world.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   for (const f of g.gore.faceList) { f.tex.dispose(); f.mat.dispose(); }
@@ -277,7 +313,8 @@ g.loadMap = (name) => {
   g.phys.boxes.length = 0; g.phys.prune();
   g.world = new World(g); g.world.build(name);
   g.world.slots = g.world.slots || [];
-  g.npcs = g.world.vendors || [];
+  // shopkeepers are real bodies: you can hit them, and they fight back (no reward for it)
+  for (const v of g.world.vendors || []) { v.noReward = true; g.bodies.push(v); }
   stockRacks();
   g.holsters.restore(carry);
   refreshButtons(g);
@@ -359,8 +396,12 @@ function updateJob(dt) {
   if (J.toSpawn > 0 && J.spawnT <= 0 && aliveCount() < 6) {
     J.toSpawn--; J.spawnT = 1.4 + Math.random() * 1.4;
     const sold = J.def.soldiers && Math.random() < J.def.soldiers;
-    spawnEnemy({ zombie: J.def.infected && Math.random() < 0.5, kind: sold ? 'soldier' : 'grunt', hp: sold ? 140 : 100, speed: 1.4 });
+    spawnEnemy({ zombie: J.def.infected && Math.random() < 0.5, kind: sold ? 'soldier' : 'grunt', hp: sold ? 140 : 100, speed: 1.4, gun: !J.def.infected && (sold ? Math.random() < 0.5 : Math.random() < 0.15) });
+    J.lastKill = J.lastKill || J.t;
   }
+  // failsafe: if nobody's died for a long time, the stragglers drop dead so a job can't stall
+  if (J.kills !== J.k0) { J.k0 = J.kills; J.lastKill = J.t; }
+  if (J.t - (J.lastKill || 0) > 90 && J.toSpawn === 0) { const b = g.bodies.find(b => b.alive && !b.noReward); if (b) { b.kill('failsafe'); J.lastKill = J.t - 85; } }
   if (J.toSpawn === 0 && aliveCount() === 0) {
     J.done = true;
     const B = J.def.bonus;
@@ -378,14 +419,14 @@ function updateMode(dt) {
   if (g.mode === 'career') return;
   if (g.mode === 'sandbox') {
     W.respawnT -= dt;
-    if (aliveCount() < g.settings.count && W.respawnT <= 0) { spawnEnemy({ zombie: g.infected && Math.random() < 0.3 }); W.respawnT = 1.2; }
+    if (aliveCount() < g.settings.count && W.respawnT <= 0) { spawnEnemy({ zombie: g.infected && Math.random() < 0.3, gun: Math.random() < 0.2 }); W.respawnT = 1.2; }
     return;
   }
   if (W.state === 'fight') {
     W.spawnT -= dt;
     if (W.toSpawn > 0 && W.spawnT <= 0 && aliveCount() < 6) {
       W.toSpawn--; W.spawnT = 1.6 + Math.random() * 1.5;
-      spawnEnemy({ zombie: g.infected && g.wave > 1 && Math.random() < 0.35, speed: 1.3 + Math.min(1, g.wave * 0.08) });
+      spawnEnemy({ zombie: g.infected && g.wave > 1 && Math.random() < 0.35, speed: 1.3 + Math.min(1, g.wave * 0.08), gun: !g.infected && g.wave >= 3 && Math.random() < 0.25 });
     }
     if (W.toSpawn === 0 && aliveCount() === 0) { W.state = 'break'; W.breakT = 6; banner('WAVE CLEARED', `+$${50 * g.wave}`); g.cash += 50 * g.wave; g.player.heal(25); }
   } else if (W.state === 'break') {
@@ -402,8 +443,8 @@ g.onPlayerDeath = () => {
   }
   banner('YOU GOT WRECKED', 'back in a moment');
   setTimeout(() => {
-    for (const b of g.bodies) b.dispose();
-    g.bodies.length = 0; g.phys.prune();
+    for (const b of g.bodies) if (!b.noReward) b.dispose();
+    g.bodies = g.bodies.filter(b => b.noReward); g.phys.prune();
     g.player.spawn(g.world.start.x, g.world.start.z, g.world.start.yaw);
     if (g.mode !== 'sandbox') startWave(1);
   }, 3500);
@@ -440,8 +481,8 @@ function checkImpaled() {
   for (const w of g.weapons) for (let i = w.impaled.length - 1; i >= 0; i--) {
     const im = w.impaled[i];
     if (im.p.gone) { w.impaled.splice(i, 1); continue; }
-    const axis = new V3(0, 1, 0).applyQuaternion(w.quat);
-    if (g.time - im.t > 0.35 && w.mode === 'held' && w.vel.dot(axis) < -2.2) {
+    const out = im.edge ? new V3().fromArray(im.edge).applyQuaternion(w.quat).negate() : new V3(0, -1, 0).applyQuaternion(w.quat);
+    if (g.time - im.t > 0.3 && w.mode === 'held' && w.vel.dot(out) > (im.edge ? 1.4 : 2.2)) {
       w.unimpale(i); g.sfx.play('slice', im.p.p, 0.8, 0.8); g.gore.burst(im.p.p, 12, 2, 0.4);
     }
   }
@@ -530,7 +571,6 @@ function start(vr) {
   g.gore.setColor(g.settings.blood);
   menu.hidden = true; hudEl.hidden = vr; document.getElementById('cross').hidden = vr;
   g.playing = true;
-  for (const b of g.bodies) b.dispose(); g.bodies.length = 0; g.phys.prune();
   g.player.spawn(g.world.start.x, g.world.start.z, g.world.start.yaw);
   g.kills = 0;
   g.player.hp = g.player.maxHp;
@@ -568,6 +608,6 @@ const bind = (id, key, num) => {
   el.oninput = () => { g.settings[key] = num ? parseFloat(el.value) : el.value; g.saveSettings(); const o = document.getElementById(id + 'Out'); if (o) o.textContent = el.value; if (key === 'blood') g.gore.setColor(el.value); };
   const o = document.getElementById(id + 'Out'); if (o) o.textContent = el.value;
 };
-bind('selMode', 'mode'); bind('selMap', 'map'); bind('selBlood', 'blood'); bind('rngPitch', 'handPitch', true); bind('rngSens', 'sens', true); bind('rngCount', 'count', true);
+bind('selMode', 'mode'); bind('selMap', 'map'); bind('selBlood', 'blood'); bind('rngPitch', 'handPitch', true); bind('rngSens', 'sens', true); bind('rngCount', 'count', true); bind('rngHeight', 'heightBoost', true);
 stockRacks();
 g.player.spawn(g.world.start.x, g.world.start.z, g.world.start.yaw);

@@ -1,8 +1,8 @@
 // Contacts between weapons / fists / feet and stickman bones, and hitscan bullets.
 // Sharp edges cut when the edge moves fast enough across the bone (or keeps sawing); everything else is blunt.
-import * as THREE from '../vendor/three.module.js?v=4';
-import { DT, segSeg, rayCapsule } from './phys.js?v=4';
-import { J, ZONE } from './body.js?v=4';
+import * as THREE from '../vendor/three.module.js?v=5';
+import { DT, segSeg, rayCapsule } from './phys.js?v=5';
+import { J, ZONE } from './body.js?v=5';
 const V3 = THREE.Vector3;
 const res = { s: 0, t: 0, d2: 0, c1: new V3(), c2: new V3() };
 const _vw = new V3(), _vb = new V3(), _vr = new V3(), _n = new V3(), _e = new V3(), _ax = new V3(), _t = new V3(), _u = new V3();
@@ -91,6 +91,14 @@ function strike(g, src, bone, t, n, vrel, pen) {
     }
     _e.fromArray(sh.edge).applyQuaternion(w.quat);
     let es = vrel.dot(_e); if (sh.double) es = Math.abs(es);
+    // a helmet turns the blade: sparks, and a hard enough hit knocks it off
+    const onHead = bone.kind === 'head' && bone.b === body.P[J.CROWN];
+    if (onHead && body.armor.helmet && es > 0.9) {
+      g.gore.sparks(pt, 10); g.sfx.play('click', pt, 1, 0.5);
+      if (es > 3) body.loseHat(n);
+      bone.cool = g.time + 0.15; if (w.mode === 'held') w.vel.addScaledVector(n, -2);
+      return 'hit';
+    }
     if (sh.saw) {
       // the chain does the cutting: any contact while running chews in, faster with pressure
       if (!w.running) es = Math.min(es, 0.5);
@@ -125,6 +133,14 @@ function strike(g, src, bone, t, n, vrel, pen) {
           return 'cut';
         }
       }
+      // a heavy blade that doesn't get through sticks in: pull it back out the way it went in
+      if (!sh.saw && !sh.stab && es > 1.4 && src.mass >= 1.6 && w.mode === 'held' && !w.impaled.length && (bone.kind === 'torso' || bone.kind === 'head' || bone.kind === 'leg' || bone.kind === 'neck') && Math.random() < 0.45) {
+        const p = t < 0.5 ? bone.a : bone.b;
+        w.impale(p); w.impaled[w.impaled.length - 1].edge = sh.edge;
+        g.sfx.play('chop', pt, 0.9, 0.9); gash(g, body, bone, pt, vrel, es); body.hurt(es * 8 * (ZONE[bone.kind] || 1), 0.8);
+        w.vel.multiplyScalar(0.2);
+        return 'lodge';
+      }
       if (es > 1.6 && !sh.saw) gash(g, body, bone, pt, vrel, es * 0.5);
       if (sh.saw && Math.random() < 0.08) { g.sfx.play('slice', pt, 0.5, 0.8); body.hurt(4, 0.3); }
       if (!sh.saw) bone.cool = g.time + 0.08;
@@ -156,6 +172,8 @@ function strike(g, src, bone, t, n, vrel, pen) {
     return 'helmet';
   }
   if (isHead && body.hat && E > 6) body.loseHat(n);
+  if (isHead && E > 12 && E <= 34 && Math.random() < 0.3) body.popEye(n);
+  if (E > 5 && E < 30 && !isHead) bone.paint(pt, 0.06, 0.5, BRUISE);
   if (isHead && E > 34 && body.crushHead(n)) {
     g.sfx.play('crush', pt, 1.2, 1, true);
     g.gore.splash(pt, n, 14, 2.5);
@@ -170,10 +188,16 @@ function strike(g, src, bone, t, n, vrel, pen) {
   return 'blunt';
 }
 
+const BRUISE = [0.42, 0.12, 0.3];
 function gash(g, body, bone, pt, vrel, es) {
   bone.paint(pt, bone.r * 1.8, 1);
-  _vw.copy(vrel).normalize().multiplyScalar(1.5);
-  g.gore.emit(pt, _vw, (4 + es * 2) | 0, 1.2);
+  // directional spray along the slash, a wound mark on the skin, a little mist
+  _vw.copy(vrel).normalize().multiplyScalar(1.5 + es * 0.4);
+  g.gore.emit(pt, _vw, (6 + es * 3) | 0, 0.8);
+  const axis = _t.subVectors(bone.b.p, bone.a.p).normalize();
+  const nrm = _u.subVectors(pt, bone.a.p).addScaledVector(axis, -_u.subVectors(pt, bone.a.p).dot(axis)).normalize();
+  if (nrm.lengthSq() > 0.5) g.gore.slashMark(bone, pt, nrm.clone(), vrel.clone().normalize(), Math.min(0.09, 0.03 + es * 0.008));
+  if (es > 2.5) g.gore.puff(pt, 0.18);
   g.sfx.play('slice', pt, Math.min(1, 0.3 + es * 0.1), 1.15);
   body.hurt(es * 4 * (ZONE[bone.kind] || 1), 0.35);
   g.onHit(body, 'slash');
@@ -217,6 +241,7 @@ export function shoot(g, origin, dir, gun) {
     if (power > 0 || gun.dmg > 1.5) g.gore.hole(bone, X, nOut, 0.02 * gun.dmg, true);
     bone.paint(E, 0.05, 0.6);
     g.gore.emit(X, dir.clone().multiplyScalar(4 + gun.dmg * 2), (8 * gun.dmg) | 0, 1.4);
+    g.gore.puff(X, 0.12 + gun.dmg * 0.08);
     g.gore.emit(E, dir.clone().multiplyScalar(-1.2), 3, 0.7);
     const imp = dir.clone().multiplyScalar(gun.force);
     bone.a.addVel(imp, 1 - tt + 0.25); bone.b.addVel(imp, tt + 0.25);
@@ -228,6 +253,7 @@ export function shoot(g, origin, dir, gun) {
     }
     if (isHead) {
       if (body.hat) body.loseHat(dir);
+      if (gun.dmg < 2.5 && Math.random() < 0.35) body.popEye(dir);
       if (gun.dmg >= 2.5) { body.crushHead(dir); g.sfx.play('crush', E, 1.2); g.gore.splash(E, dir, 16, 3); }
       else { body.hurt(400, 1); }
       g.onHit(body, 'headshot');

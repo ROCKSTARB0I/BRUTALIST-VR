@@ -162,6 +162,17 @@ const DEFS = {
     noiseBurst(o, 0.02, 1.2, 0.18, 'lp', 500);
     return norm(drive(o, 1.6), 0.8);
   },
+  // dying: a wet, choking exhale (no voice tone)
+  gurgle: (v) => {
+    const o = arr(0.9), bq = new BQ('bp', 500, 2.5), lp = new BQ('lp', 1400, 0.7);
+    for (let i = 0; i < o.length; i++) {
+      const u = i / o.length, bub = Math.sin(i / SR * 2 * Math.PI * (9 + v * 2)) > 0.6 ? 1.6 : 0.6;
+      bq.set(380 + 260 * Math.sin(i / SR * 40) + v * 40, 2.5);
+      o[i] = lp.p(bq.p(nz()) * bub) * Math.min(1, u * 12) * Math.exp(-2.6 * u);
+    }
+    noiseBurst(o, 0, 0.25, 0.5, 'lp', 260);
+    return norm(o, 0.55);
+  },
   // pneumatic nail gun: sharp air crack + a dull drive thump
   nail: () => { const o = arr(0.25); noiseBurst(o, 0, 0.02, 1, 'hp', 1800); tone(o, 0.004, 0.08, 0.8, 140, 80, 5); noiseBurst(o, 0.01, 0.18, 0.35, 'bp', u => 2400 - 1600 * u, 1.2); return norm(drive(o, 1.6), 0.8); },
   pullcord: () => { const o = arr(0.6); noiseBurst(o, 0, 0.35, 0.6, 'bp', u => 600 + 1800 * u, 2, 'bell'); clicks(o, 0.32, 0.25, 8, 0.6, 900, 4); tone(o, 0.35, 0.25, 0.5, 40, 55, 3, 'saw'); return norm(o, 0.7); },
