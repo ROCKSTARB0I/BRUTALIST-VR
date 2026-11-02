@@ -1,7 +1,7 @@
 // How weapons reach your hands: a paged weapon wall in every map (tabs + arrows, locked if you haven't bought it),
 // stands in the hub to try things, and four body holsters (two hips, two over the shoulders) that ride with you between maps.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { DEFS, Weapon } from './arsenal.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { DEFS, Weapon } from './arsenal.js?v=4';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const QY = (a) => new Q().setFromAxisAngle(new V3(0, 1, 0), a);
 const QX = (a) => new Q().setFromAxisAngle(new V3(1, 0, 0), a);

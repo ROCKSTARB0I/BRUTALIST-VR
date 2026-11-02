@@ -1,7 +1,7 @@
 // Blood that never goes away: droplets fly, land, and are painted into per-face canvases on the level boxes.
 // Also: loose chunks (head halves, skull bits, brains) and bullet-hole decals stuck to body bones.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { Particle, DT } from './phys.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { Particle, DT } from './phys.js?v=4';
 const V3 = THREE.Vector3;
 const MAXD = 1600;
 const PPM = 40;                // canvas pixels per metre on level surfaces

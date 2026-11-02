@@ -1,7 +1,7 @@
 // You: WebXR rig (Quest) or mouse + keyboard. Solid geometric gloves, grabs, throws, kicks, headbutts.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { DT } from './phys.js?v=3';
-import { DEFS, Weapon } from './arsenal.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { DT } from './phys.js?v=4';
+import { DEFS, Weapon } from './arsenal.js?v=4';
 const V3 = THREE.Vector3, Q = THREE.Quaternion;
 const UP = new V3(0, 1, 0);
 const _v = new V3(), _w = new V3(), _q = new Q(), _m = new THREE.Matrix4(), _e = new THREE.Euler();
@@ -343,7 +343,9 @@ export class Player {
 
   updateVR(dt) {
     const g = this.g;
-    const xrCam = g.renderer.xr.getCamera();
+    // the dolly-parented camera carries the real head pose in world space (the raw XR camera ignores our snap turns)
+    this.dolly.updateMatrixWorld(true);
+    const headQ = this.cam.getWorldQuaternion(new Q());
     for (const h of this.H) {
       const gp = h.src && h.src.gamepad;
       if (!gp) continue;
@@ -359,11 +361,13 @@ export class Player {
     const L = this.hands.left, R = this.hands.right;
     // smooth locomotion, head-relative
     const ax = L.axes || [0, 0];
-    const fwd = new V3(0, 0, -1).applyQuaternion(xrCam.getWorldQuaternion(_q)); fwd.y = 0; fwd.normalize();
+    const fwd = new V3(0, 0, -1).applyQuaternion(headQ); fwd.y = 0;
+    if (fwd.lengthSq() < 1e-4) fwd.set(0, 1, 0).applyQuaternion(headQ).setY(0).negate();   // looking straight down
+    fwd.normalize();
     const right = new V3().crossVectors(fwd, UP);
     const sp = (L.btn.stick ? 4.2 : 2.6) * dt;
     const mvx = (right.x * ax[0] - fwd.x * ax[1]) * sp, mvz = (right.z * ax[0] - fwd.z * ax[1]) * sp;
-    xrCam.getWorldPosition(this.head);
+    this.cam.getWorldPosition(this.head);
     this.move(Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15 ? mvx : 0, Math.abs(ax[0]) > 0.15 || Math.abs(ax[1]) > 0.15 ? mvz : 0, dt);
     // snap turn about the head
     const rx = (R.axes || [0, 0])[0];

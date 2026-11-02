@@ -1,8 +1,8 @@
 // Contacts between weapons / fists / feet and stickman bones, and hitscan bullets.
 // Sharp edges cut when the edge moves fast enough across the bone (or keeps sawing); everything else is blunt.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { DT, segSeg, rayCapsule } from './phys.js?v=3';
-import { J, ZONE } from './body.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { DT, segSeg, rayCapsule } from './phys.js?v=4';
+import { J, ZONE } from './body.js?v=4';
 const V3 = THREE.Vector3;
 const res = { s: 0, t: 0, d2: 0, c1: new V3(), c2: new V3() };
 const _vw = new V3(), _vb = new V3(), _vr = new V3(), _n = new V3(), _e = new V3(), _ax = new V3(), _t = new V3(), _u = new V3();

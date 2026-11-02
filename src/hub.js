@@ -1,8 +1,8 @@
 // The hub: a tiled market hall under a glass roof. Vendor stalls sell weapons and upgrades,
 // a jobs board starts paid missions, and the tailor sells armour. Career progress is saved locally.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { DEFS } from './arsenal.js?v=3';
-import { Body, OUTFITS } from './body.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { DEFS } from './arsenal.js?v=4';
+import { Body, OUTFITS } from './body.js?v=4';
 const V3 = THREE.Vector3;
 
 const SAVE_KEY = 'brutalist_career';

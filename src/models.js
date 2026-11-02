@@ -1,7 +1,7 @@
 // Weapon models built from real side profiles (cut out and extruded, bevelled edges), with real parts:
 // receivers, trigger guards, sights, fullers, tapered blade edges, open magazines showing the rounds.
 // Same local frames as arsenal.js: melee handle along +Y with the edge facing -Z; guns barrel along -Z.
-import * as THREE from '../vendor/three.module.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
 const V3 = THREE.Vector3;
 
 const MC = {};

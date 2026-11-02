@@ -1,16 +1,16 @@
 // BRUTALIST VR — boot, loop, modes, effects glue.
-import * as THREE from '../vendor/three.module.js?v=3';
-import { Phys, DT, Particle } from './phys.js?v=3';
-import { Body, J, limbGeo, whiteColors } from './body.js?v=3';
-import { Gore } from './gore.js?v=3';
-import { Sfx } from './sfx.js?v=3';
-import { World, registerMap } from './world.js?v=3';
-import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=3';
-import { Motor } from './sfx.js?v=3';
-import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=3';
-import { Player } from './player.js?v=3';
-import { Weapon, DEFS } from './arsenal.js?v=3';
-import { weaponContacts, strikerContacts, shoot } from './combat.js?v=3';
+import * as THREE from '../vendor/three.module.js?v=4';
+import { Phys, DT, Particle } from './phys.js?v=4';
+import { Body, J, limbGeo, whiteColors } from './body.js?v=4';
+import { Gore } from './gore.js?v=4';
+import { Sfx } from './sfx.js?v=4';
+import { World, registerMap } from './world.js?v=4';
+import { buildHub, loadCareer, saveCareer, applyUpgrades, updateButtons, refreshButtons, UPGRADES, JOBS } from './hub.js?v=4';
+import { Motor } from './sfx.js?v=4';
+import { Holsters, buildWall, fillWall, updateSlots, placeSlot } from './loadout.js?v=4';
+import { Player } from './player.js?v=4';
+import { Weapon, DEFS } from './arsenal.js?v=4';
+import { weaponContacts, strikerContacts, shoot } from './combat.js?v=4';
 const V3 = THREE.Vector3;
 
 const SETTINGS_KEY = 'splinter_settings';
